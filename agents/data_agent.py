@@ -165,15 +165,54 @@ class DataAgent(threading.Thread):
         return {}
 
     def get_price_yfinance(self) -> dict:
-        """Retry Groww with fresh token on timeout"""
+        """yfinance fallback when Groww LTP unavailable (candle seed / price only)."""
         try:
-            # Refresh token and retry Groww
+            import yfinance as yf
+            hist = yf.Ticker('^NSEBANK').history(period='1d', interval='1m')
+            if len(hist) > 0:
+                p = float(hist['Close'].iloc[-1])
+                if p > 0:
+                    return {'price': p, 'volume': 1000, 'source': 'YFINANCE'}
+        except Exception:
+            pass
+        try:
             self._token = self.get_groww_token()
             if self._token:
                 return self.get_live_price()
-        except:
+        except Exception:
             pass
         return {}
+
+    def _seed_candles_from_history(self):
+        """Cold start: seed 1m candles from yfinance so 5m/15m work immediately."""
+        if len(self.b5.get_candles()) >= 10:
+            return
+        try:
+            import yfinance as yf
+            df = yf.Ticker('^NSEBANK').history(period='2d', interval='1m')
+            if df is None or len(df) < 20:
+                return
+            today = datetime.now(IST).date()
+            count = 0
+            for ts, row in df.iterrows():
+                try:
+                    tick_ts = ts.to_pydatetime()
+                    if tick_ts.tzinfo is None:
+                        tick_ts = IST.localize(tick_ts)
+                    else:
+                        tick_ts = tick_ts.astimezone(IST)
+                    if tick_ts.date() != today:
+                        continue
+                    price = float(row['Close'])
+                    vol = int(row.get('Volume', 1000) or 1000)
+                    self.b1.add_tick(price, max(vol, 1), tick_ts)
+                    count += 1
+                except Exception:
+                    continue
+            if count > 0:
+                print(f"📈 Seeded {count} historical ticks for cold start")
+        except Exception as e:
+            STATE.add_error(f"Candle seed: {str(e)[:40]}")
 
     def _calc_rsi(self, candles, period=14) -> float:
         if len(candles) < period+1: return 50.0
@@ -248,11 +287,17 @@ class DataAgent(threading.Thread):
         STATE.set('system.market_open',
                   dtime(9,15) <= t <= dtime(15,30))
         STATE.heartbeat()
+        try:
+            from src.safety import update_heartbeat
+            update_heartbeat()
+        except Exception:
+            pass
 
     def run(self):
         STATE.set_agent_status('data', 'RUNNING')
         print("📡 Data Agent: 1-min + 5-min + 15-min candles ✅")
         self._token = self.get_groww_token()
+        self._seed_candles_from_history()
 
         while self.running and STATE.get('system.running'):
             try:

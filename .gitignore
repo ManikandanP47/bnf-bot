@@ -4,6 +4,9 @@
 *.db-shm
 *.db-wal
 *.json
+!daily_zone.json
+!position_state.json
+!heartbeat.json
 *.log
 __pycache__/
 *.pyc

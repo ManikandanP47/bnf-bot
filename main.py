@@ -1,25 +1,15 @@
 """
 BankNifty Multi-Agent Trading System — Main Orchestrator
-Starts 6 agents. Runs on Railway.app or local Mac.
 
-Architecture (from research):
-  Data     → Dhan WebSocket real-time ticks
-  Analysis → SMC on live candles
-  Risk     → All filters + brain check
-  Execute  → Groww Smart Orders (OCO)
-  Monitor  → Trailing SL + partial exit every 30s
-  Learning → SQLite brain, fractional-Kelly sizing
+Groww-only stack (data + execution):
+  Data     → Groww BankNifty LTP + yfinance candle seed on cold start
+  Analysis → SMC 3-timeframe on live candles
+  Risk     → Filters + brain + capital guards
+  Execute  → Groww market buy + OCO (SL/target)
+  Monitor  → Paper premium or live Groww sell on exit
+  Learning → SQLite brain + daily P&L ledger
 
-Decisions locked in this build:
-  ✅ Dhan IDX_I/"25" for BankNifty real-time data
-  ✅ yfinance fallback for paper/testing
-  ✅ Groww OCO for server-side SL+Target
-  ✅ SQLite WAL brain (persistent across restarts)
-  ✅ Min 30 trades before threshold changes
-  ✅ Fractional Kelly (0.25x) position sizing
-  ✅ No cron-job.org needed (internal scheduler)
-  ✅ All safety edge cases handled
-  ✅ PAPER_MODE=true until verified
+  PAPER_MODE=true until /readiness gates pass
 """
 
 import os, sys, time, threading
@@ -49,7 +39,11 @@ IST = pytz.timezone('Asia/Kolkata')
 
 
 def reconcile_on_startup(messenger: Messenger):
-    from src.safety import reconcile_positions
+    """Restore position from disk + verify against Groww."""
+    from src.position_store import load_position, save_position, clear_position
+
+    paper = os.getenv('PAPER_MODE', 'true').lower() == 'true'
+    saved = load_position()
     token = STATE.get('system.groww_token', '')
     if not token:
         try:
@@ -57,12 +51,65 @@ def reconcile_on_startup(messenger: Messenger):
             token = DataAgent().get_groww_token()
         except Exception:
             token = os.getenv('GROWW_ACCESS_TOKEN', '')
-    result = reconcile_positions(token)
-    alert  = result.get('alert')
-    if alert:
-        messenger.send(f"⚠️ *Startup Reconciliation*\n{alert}")
+
+    if paper:
+        if saved.get('open'):
+            STATE.update('position', saved)
+            messenger.send(
+                f"📂 *Position restored (paper)*\n"
+                f"{saved.get('name', '')} @ ₹{saved.get('entry_price', 0)}\n"
+                f"_Monitor resumed tracking_"
+            )
+        print("  ✅ Reconciliation: PAPER")
+        return
+
+    from src.groww_trader import GrowwTrader
+    trader = GrowwTrader(token)
+    groww_open = []
+    try:
+        for p in trader.get_positions():
+            qty = int(p.get('quantity', p.get('net_qty', 0)) or 0)
+            if qty != 0:
+                groww_open.append(p)
+    except Exception:
+        groww_open = []
+
+    if saved.get('open') and groww_open:
+        STATE.update('position', saved)
+        messenger.send(
+            f"📂 *Position restored*\n"
+            f"{saved.get('name')} — matches Groww ✅\n"
+            f"_Monitor watching SL/Target_"
+        )
+        print("  ✅ Reconciliation: SYNC")
+    elif saved.get('open') and not groww_open:
+        clear_position()
+        STATE.update('position', {'open': False})
+        messenger.send(
+            "⚠️ *Stale position cleared*\n"
+            "Disk had open trade but Groww is flat — state reset."
+        )
+        print("  ✅ Reconciliation: CLEARED_STALE")
+    elif not saved.get('open') and groww_open:
+        p = groww_open[0]
+        sym = p.get('trading_symbol', p.get('tradingSymbol', 'UNKNOWN'))
+        qty = abs(int(p.get('quantity', p.get('net_qty', 15)) or 15))
+        entry = abs(float(p.get('average_price', p.get('averagePrice', 0)) or 0))
+        recovered = {
+            'open': True, 'name': sym, 'entry_price': entry,
+            'qty': qty, 'recovered': True,
+            'contract_id': sym,
+        }
+        STATE.update('position', recovered)
+        save_position(recovered)
+        messenger.send(
+            f"⚠️ *Recovered Groww position*\n"
+            f"{sym} qty {qty} @ ₹{entry:.0f}\n"
+            f"_Bot was not tracking — monitor active now_"
+        )
+        print("  ✅ Reconciliation: RECOVERED")
     else:
-        print(f"  ✅ Reconciliation: {result.get('status', 'OK')}")
+        print("  ✅ Reconciliation: NO_POSITION")
 
 
 def load_zone_on_startup(messenger: Messenger):
@@ -180,6 +227,10 @@ def scheduler(messenger: Messenger):
                         f"📚 *Skip learning updated* — {n} skipped setup(s) resolved at EOD.\n"
                         f"Type /funnel to see if your skips were good."
                     )
+
+            from src.safety import update_heartbeat
+            if 9 <= hour <= 16:
+                update_heartbeat()
 
             if hour == 20 and 13 <= minute <= 23 and last_evening != now.day:
                 last_evening = now.day

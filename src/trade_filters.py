@@ -48,9 +48,19 @@ EVENT_CALENDAR = {
     # India Budget
     '2027-02-01': 'Union Budget',
 
-    # Options expiry (monthly — last Thursday of month)
-    # Bot checks dynamically for these
+    # Options expiry — BankNifty weekly/monthly = WEDNESDAY (NSE)
 }
+
+
+def _last_weekday_of_month(year: int, month: int, weekday: int):
+    """weekday: 0=Mon … 2=Wed"""
+    from datetime import date, timedelta
+    if month == 12:
+        last_day = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+    days_back = (last_day.weekday() - weekday) % 7
+    return last_day - timedelta(days=days_back)
 
 
 def is_event_day() -> dict:
@@ -59,47 +69,31 @@ def is_event_day() -> dict:
 
     Checks:
     1. Known event dates
-    2. Monthly expiry Thursday (last Thursday of month)
-    3. Weekly expiry Thursday (every Thursday is risky)
+    2. Monthly expiry Wednesday (last Wednesday of month)
+    3. Weekly expiry Wednesday (BankNifty)
     """
     today     = datetime.now(IST)
     today_str = today.strftime('%Y-%m-%d')
-    weekday   = today.weekday()  # 0=Mon, 3=Thu, 4=Fri
+    weekday   = today.weekday()  # 0=Mon, 2=Wed
 
-    # Known event dates
     if today_str in EVENT_CALENDAR:
         return {
             'skip':   True,
             'reason': f"⚠️ Event day: {EVENT_CALENDAR[today_str]}"
         }
 
-    # Monthly expiry Thursday (last Thursday of month)
-    # Find last Thursday of current month
-    year, month = today.year, today.month
-    last_day    = date(year, month + 1 if month < 12 else 1,
-                       1 if month < 12 else 1) - timedelta(days=1)
-    if month == 12:
-        last_day = date(year + 1, 1, 1) - timedelta(days=1)
-    else:
-        last_day = date(year, month + 1, 1) - timedelta(days=1)
-
-    # Go back to find last Thursday
-    days_to_thu = (last_day.weekday() - 3) % 7
-    last_thu    = last_day - timedelta(days=days_to_thu)
-
-    if today.date() == last_thu:
+    last_wed = _last_weekday_of_month(today.year, today.month, 2)
+    if today.date() == last_wed:
         return {
             'skip':   True,
-            'reason': '⚠️ Monthly expiry Thursday — high volatility, skip'
+            'reason': '⚠️ Monthly BankNifty expiry (Wednesday) — high volatility, skip',
         }
 
-    # Weekly expiry Thursday — REDUCED caution (don't skip, just warn)
-    # We use 7-10 day expiry so weekly Thursday is less risky
-    if weekday == 3:  # Thursday
+    if weekday == 2:
         return {
-            'skip':   False,  # Don't skip, just be cautious
-            'reason': '⚠️ Expiry Thursday — reduce size, tighter SL',
-            'caution': True
+            'skip':    False,
+            'reason':  '⚠️ Weekly BankNifty expiry (Wednesday) — tighter rules',
+            'caution': True,
         }
 
     return {'skip': False, 'reason': ''}

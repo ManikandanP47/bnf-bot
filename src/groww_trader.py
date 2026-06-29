@@ -103,23 +103,45 @@ class GrowwTrader:
                 stop_loss_order_type = 'MARKET'
             )
 
+            oco_ok = False
+            oco_id = ''
+            if oco_resp.get('status') == 'success':
+                oco_ok = True
+                oco_id = oco_resp.get('groww_order_id', oco_resp.get('smart_order_id', ''))
+            else:
+                logger.warning(f"OCO placement failed: {oco_resp}")
+
             trade = {
                 'name':        f"{index} {strike} {opt_type}",
                 'contract_id': contract_id,
                 'entry_id':    order_id,
+                'oco_id':      oco_id,
+                'oco_ok':      oco_ok,
                 'sl_prem':     sl_prem,
                 'tgt_prem':    tgt_prem,
                 'qty':         qty,
+                'strike':      strike,
+                'opt_type':    opt_type,
+                'expiry':      expiry,
                 'time':        datetime.now(IST).strftime('%d %b %Y %I:%M %p'),
                 'status':      'OPEN',
                 'mode':        'LIVE'
             }
             self._log(trade)
 
+            msg = f"Bought {contract_id}"
+            if oco_ok:
+                msg += " + OCO placed ✅"
+            else:
+                msg += " ⚠️ OCO failed — monitor will manage exit"
+
             return {
                 'success':  True,
                 'order_id': order_id,
-                'message':  f"Bought {contract_id} + OCO placed",
+                'oco_ok':   oco_ok,
+                'oco_id':   oco_id,
+                'contract_id': contract_id,
+                'message':  msg,
                 'trade':    trade
             }
 
@@ -149,6 +171,70 @@ class GrowwTrader:
             'trade':    trade,
             'paper':    True
         }
+
+    def sell_option(self, contract_id: str, qty: int,
+                    reason: str = 'EXIT') -> dict:
+        """Market sell — cancels smart orders first, then sells."""
+        if self.paper or not self.groww:
+            return {'success': True, 'paper': True, 'qty': qty}
+
+        try:
+            self._cancel_smart_orders(contract_id)
+
+            sell_resp = self.groww.place_order(
+                trading_symbol   = contract_id,
+                exchange         = 'NSE',
+                segment          = self.groww.SEGMENT_FNO,
+                transaction_type = 'SELL',
+                order_type       = 'MARKET',
+                quantity         = qty,
+                product          = 'NRML',
+            )
+
+            ok = sell_resp.get('status') == 'success'
+            order_id = sell_resp.get('groww_order_id', '')
+            if not ok:
+                return {
+                    'success': False,
+                    'error':   sell_resp.get('message', 'Sell order failed'),
+                }
+
+            return {
+                'success':  True,
+                'order_id': order_id,
+                'qty':      qty,
+                'message':  f"Sold {qty} units {contract_id} ({reason})",
+            }
+        except Exception as e:
+            logger.error(f"Sell error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _cancel_smart_orders(self, contract_id: str):
+        """Best-effort cancel OCO / open orders before manual exit."""
+        if not self.groww:
+            return
+        try:
+            if hasattr(self.groww, 'cancel_smart_order'):
+                orders = self.groww.get_order_list(
+                    segment=self.groww.SEGMENT_FNO
+                ) if hasattr(self.groww, 'get_order_list') else {}
+                for o in (orders.get('order_list', []) if isinstance(orders, dict) else []):
+                    sym = o.get('trading_symbol', o.get('tradingSymbol', ''))
+                    if sym == contract_id and o.get('status', '').upper() in (
+                        'OPEN', 'PENDING', 'TRIGGER_PENDING', 'ACTIVE'
+                    ):
+                        oid = o.get('groww_order_id', o.get('order_id', ''))
+                        if oid:
+                            self.groww.cancel_order(order_id=oid)
+        except Exception as e:
+            logger.warning(f"Cancel orders: {e}")
+
+    def sell_option_by_params(self, strike: int, opt_type: str,
+                              expiry: str, qty: int,
+                              index: str = 'BANKNIFTY',
+                              reason: str = 'EXIT') -> dict:
+        contract_id = self.get_contract_id(index, strike, opt_type, expiry)
+        return self.sell_option(contract_id, qty, reason)
 
     def get_positions(self) -> list:
         if self.paper:

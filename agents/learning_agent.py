@@ -217,7 +217,36 @@ class TraderBrain:
                   mae_rs, mfe_rs, slip, tid))
 
         self._update_patterns(tid, outcome, pnl_rs)
+        self._update_daily_pnl(data.get('date') or datetime.now(IST).strftime('%Y-%m-%d'),
+                                outcome, pnl_rs)
         return {'outcome': outcome, 'lesson': lesson, 'mistake': mistake, 'pnl_rs': pnl_rs}
+
+    def _update_daily_pnl(self, date_str: str, outcome: str, pnl_rs: float):
+        """Write rolling daily P&L summary."""
+        try:
+            with self._lock:
+                row = self.conn.execute(
+                    "SELECT trades, wins, pnl, max_loss FROM daily_pnl WHERE date=?",
+                    (date_str,)
+                ).fetchone()
+                if row:
+                    trades, wins, pnl, max_loss = row
+                    trades += 1
+                    wins += 1 if outcome == 'WIN' else 0
+                    pnl = (pnl or 0) + pnl_rs
+                    max_loss = min(max_loss or 0, pnl_rs) if pnl_rs < 0 else (max_loss or 0)
+                else:
+                    trades, wins, pnl = 1, (1 if outcome == 'WIN' else 0), pnl_rs
+                    max_loss = pnl_rs if pnl_rs < 0 else 0
+                self.conn.execute("""
+                    INSERT INTO daily_pnl (date, trades, wins, pnl, max_loss)
+                    VALUES (?,?,?,?,?)
+                    ON CONFLICT(date) DO UPDATE SET
+                        trades=?, wins=?, pnl=?, max_loss=?
+                """, (date_str, trades, wins, pnl, max_loss,
+                      trades, wins, pnl, max_loss))
+        except Exception:
+            pass
 
     def _classify(self, outcome, reason, data):
         if outcome == 'WIN':

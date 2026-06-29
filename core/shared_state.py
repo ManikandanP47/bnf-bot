@@ -73,8 +73,15 @@ class SharedState:
                 'leg1_done':     False,
                 'leg1_profit':   0.0,
                 'qty':           15,
+                'strike':        0,
+                'opt_type':      'CE',
+                'expiry':        '',
+                'contract_id':   '',
+                'oco_ok':        False,
                 'learning_id':   0,
                 'bnf_at_entry':  0.0,
+                'mae_rs':        0,
+                'mfe_rs':        0,
             },
 
             # ── Signals between agents ────────────────────────────

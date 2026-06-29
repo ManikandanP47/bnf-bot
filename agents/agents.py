@@ -487,8 +487,9 @@ class ExecutionAgent(threading.Thread):
             return {'success': False, 'error': bal['reason']}
         try:
             from src.groww_trader import GrowwTrader
+            from src.safety import verify_order_filled
             trader = GrowwTrader(token)
-            return trader.buy_option(
+            result = trader.buy_option(
                 'BANKNIFTY',
                 params['strike'],
                 params['opt_type'],
@@ -497,6 +498,23 @@ class ExecutionAgent(threading.Thread):
                 params['tgt_prem'],
                 lots=params.get('lots', 1)
             )
+            if result.get('success'):
+                fill = verify_order_filled(token, result.get('order_id', ''))
+                if not fill.get('filled'):
+                    self.messenger.send(
+                        f"❌ *Buy not filled*\n{fill.get('reason', 'Timeout')}\n"
+                        f"Check Groww orders — do not assume position is open."
+                    )
+                    return {'success': False, 'error': fill.get('reason', 'Not filled')}
+                result['filled_qty'] = fill.get('qty', params.get('qty', 15))
+                if fill.get('price'):
+                    result['fill_price'] = fill['price']
+                if not result.get('oco_ok'):
+                    self.messenger.send(
+                        "⚠️ *OCO not confirmed on Groww*\n"
+                        "Monitor Agent will manage exits manually."
+                    )
+            return result
         except Exception as e:
             error_str = str(e).lower()
             # If token expired, refresh and retry once
@@ -511,6 +529,7 @@ class ExecutionAgent(threading.Thread):
                     
                     # Retry with fresh token
                     from src.groww_trader import GrowwTrader
+                    from src.safety import verify_order_filled
                     trader = GrowwTrader(fresh_token)
                     result = trader.buy_option(
                         'BANKNIFTY',
@@ -521,6 +540,11 @@ class ExecutionAgent(threading.Thread):
                         params['tgt_prem'],
                         lots=params.get('lots', 1)
                     )
+                    if result.get('success'):
+                        fill = verify_order_filled(fresh_token, result.get('order_id', ''))
+                        if not fill.get('filled'):
+                            return {'success': False, 'error': fill.get('reason', 'Not filled')}
+                        result['filled_qty'] = fill.get('qty', params.get('qty', 15))
                     if result.get('success'):
                         print(f"✅ Order placed after token refresh")
                         return result
@@ -665,9 +689,17 @@ class ExecutionAgent(threading.Thread):
 
                     if result.get('success'):
                         from src.trade_analytics import log_funnel
+                        from src.position_store import save_position
+                        from src.groww_symbols import groww_option_symbol
                         log_funnel('executed', signal)
                         STATE.set('signals.pending_params', None)
                         qty = params.get('qty', 15)
+                        if result.get('filled_qty'):
+                            qty = int(result['filled_qty'])
+                        fill_prem = result.get('fill_price') or params['premium']
+                        contract_id = result.get('contract_id') or groww_option_symbol(
+                            'BANKNIFTY', params['strike'], params['opt_type'], params['expiry']
+                        )
                         from src.zone_manager import mark_zone_used
                         mark_zone_used()
                         STATE.set('trade.dynamic_sl', None)
@@ -676,22 +708,26 @@ class ExecutionAgent(threading.Thread):
                         STATE.update('position', {
                             'open':         True,
                             'name':         params['name'],
-                            'entry_price':  params['premium'],
+                            'entry_price':  fill_prem,
                             'entry_time':   datetime.now(IST).strftime('%H:%M'),
                             'sl_prem':      params['sl_prem'],
                             'tgt_prem':     params['tgt_prem'],
                             'trail_sl':     params['sl_prem'],
-                            'peak_premium': params['premium'],
+                            'peak_premium': fill_prem,
                             'leg1_done':    False,
                             'leg1_profit':  0,
                             'qty':          qty,
                             'opt_type':     params.get('opt_type', 'CE'),
                             'strike':       params.get('strike', 0),
+                            'expiry':       params.get('expiry', ''),
+                            'contract_id':  contract_id,
+                            'oco_ok':       result.get('oco_ok', False),
                             'learning_id':  learning_id,
                             'bnf_at_entry': signal.get('price', 0),
                             'mae_rs':       0,
                             'mfe_rs':       0,
                         })
+                        save_position(STATE.get('position'))
 
                         # Update brain trades today
                         trades_today = STATE.get('brain.trades_today', 0)
@@ -756,6 +792,43 @@ class MonitorAgent(threading.Thread):
         self.messenger    = messenger
         self.last_hourly  = -1
 
+    def _live_sell(self, position: dict, qty: int, reason: str) -> dict:
+        """Execute Groww market sell (live mode only)."""
+        if os.getenv('PAPER_MODE', 'true').lower() == 'true':
+            return {'success': True, 'paper': True}
+        token = STATE.get('system.groww_token', '') or os.getenv('GROWW_ACCESS_TOKEN', '')
+        if not token:
+            return {'success': False, 'error': 'No Groww token'}
+        from src.groww_trader import GrowwTrader
+        from src.safety import verify_order_filled
+        from src.groww_symbols import groww_option_symbol
+
+        trader = GrowwTrader(token)
+        cid = position.get('contract_id')
+        if not cid:
+            zone = STATE.get('zone', {})
+            cid = groww_option_symbol(
+                'BANKNIFTY',
+                position.get('strike') or zone.get('strike', 0),
+                position.get('opt_type') or zone.get('opt_type', 'CE'),
+                position.get('expiry') or zone.get('expiry', ''),
+            )
+        result = trader.sell_option(cid, qty, reason)
+        if result.get('success') and result.get('order_id'):
+            fill = verify_order_filled(token, result['order_id'], max_wait_sec=25)
+            if not fill.get('filled'):
+                self.messenger.send(
+                    f"⚠️ *Sell not confirmed*\n{fill.get('reason', '')}\n"
+                    f"Check Groww app immediately."
+                )
+                return {'success': False, 'error': fill.get('reason')}
+        elif not result.get('success'):
+            self.messenger.send(
+                f"❌ *Groww sell failed*\n{result.get('error', 'Unknown')}\n"
+                f"_Close manually on Groww if needed_"
+            )
+        return result
+
     def check_position(self):
         if not STATE.get('position.open'):
             return
@@ -816,6 +889,9 @@ class MonitorAgent(threading.Thread):
         # Leg 1 exit (50% at 1.5x)
         elif not leg1_done and est_prem >= entry * 1.5:
             leg1_profit = round((est_prem - entry) * leg1_units, 0)
+            sell_r = self._live_sell(position, leg1_units, 'LEG1_PROFIT')
+            if not sell_r.get('success') and not sell_r.get('paper'):
+                return
             STATE.set('position.leg1_done', True)
             STATE.set('position.leg1_profit', leg1_profit)
             STATE.set('position.trail_sl', entry)  # Move SL to breakeven
@@ -855,6 +931,11 @@ class MonitorAgent(threading.Thread):
 
         # ── Execute exit ──────────────────────────────────────────
         if exit_now:
+            rem_qty = leg2_units if leg1_done else qty
+            sell_r = self._live_sell(position, rem_qty, exit_reason)
+            if not sell_r.get('success') and not sell_r.get('paper'):
+                return
+
             emoji   = '🟢' if pnl_rs >= 0 else '🔴'
             pnl_pct = round(pnl_rs / (entry * qty) * 100, 1) if entry and qty else 0
 
@@ -959,6 +1040,8 @@ class MonitorAgent(threading.Thread):
                 )
 
             # Clear position
+            from src.position_store import clear_position
+            clear_position()
             STATE.update('position', {
                 'open': False, 'name': '', 'entry_price': 0,
                 'sl_prem': 0, 'tgt_prem': 0, 'trail_sl': 0,
@@ -995,15 +1078,12 @@ class MonitorAgent(threading.Thread):
                     )
             else:
                 self.messenger.send(
-                    f"{emoji} *EXIT*\n"
+                    f"{emoji} *EXIT — LIVE*\n"
                     f"Option: {position.get('name')}\n"
                     f"Reason: {exit_reason}\n\n"
                     f"P&L: ₹{pnl_rs:,} ({pnl_pct:+.1f}%)\n"
-                    f"Today total: ₹{today_pnl:,}"
-                )
-                self.messenger.send(
-                    "⚡ Closing position on Groww...\n"
-                    "Check positions to confirm."
+                    f"Today total: ₹{today_pnl:,}\n"
+                    f"_Groww sell executed ✅_"
                 )
 
         else:
