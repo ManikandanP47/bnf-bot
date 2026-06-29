@@ -6,11 +6,67 @@ Morning bot READS and WAITS for price to reach it.
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 IST        = pytz.timezone('Asia/Kolkata')
 ZONE_FILE  = 'daily_zone.json'
+
+
+def next_trading_day_str() -> str:
+    """Date string for the next NSE session (evening scan → tomorrow)."""
+    d = datetime.now(IST).date() + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d.strftime('%d %b %Y')
+
+
+def today_str() -> str:
+    return datetime.now(IST).strftime('%d %b %Y')
+
+
+def zone_distance_pct(price: float, zone: dict) -> float:
+    """How far BNF is from zone midpoint (%). Negative = below zone."""
+    if not price or not zone:
+        return 0.0
+    low  = zone.get('low') or zone.get('zone_low', 0)
+    high = zone.get('high') or zone.get('zone_high', 0)
+    if not low or not high:
+        return 0.0
+    mid = (low + high) / 2
+    return round((price - mid) / mid * 100, 2)
+
+
+def zone_to_state(zone: dict) -> dict:
+    """Convert saved zone file → shared STATE zone section."""
+    return {
+        'active':      True,
+        'low':         zone.get('zone_low', 0),
+        'high':        zone.get('zone_high', 0),
+        'bias':        zone.get('bias', 'NEUTRAL'),
+        'score':       zone.get('score', 0),
+        'option_name': zone.get('name', ''),
+        'strike':      zone.get('strike', 0),
+        'opt_type':    zone.get('opt_type', 'CE'),
+        'expiry':      zone.get('expiry', ''),
+        'premium':     zone.get('premium', 265),
+        'sl_prem':     zone.get('sl_prem', 186),
+        'tgt_prem':    zone.get('tgt_prem', 530),
+        'saved_at':    zone.get('saved_at', ''),
+        'used':        zone.get('used', False),
+    }
+
+
+def apply_zone_to_state(zone: dict):
+    """Hydrate in-memory zone from disk."""
+    from core.shared_state import STATE
+    if zone and not zone.get('used'):
+        STATE.update('zone', zone_to_state(zone))
+        print(f"  ✅ Zone loaded: {zone.get('bias')} "
+              f"{zone.get('zone_low', 0):,.0f}–{zone.get('zone_high', 0):,.0f}")
+    else:
+        STATE.set('zone.active', False)
+        print("  ℹ️  No active zone for today")
 
 
 def save_zone(analysis: dict):
@@ -24,8 +80,9 @@ def save_zone(analysis: dict):
         return
 
     zone = {
-        'date':       datetime.now(IST).strftime('%d %b %Y'),
-        'bias':       analysis.get('trend'),
+        'trade_date':  next_trading_day_str(),
+        'date':        datetime.now(IST).strftime('%d %b %Y'),
+        'bias':        analysis.get('trend'),
         'zone_low':   None,
         'zone_high':  None,
         'score':      analysis.get('score', 0),
@@ -68,20 +125,20 @@ def save_zone(analysis: dict):
 
 
 def load_zone() -> dict:
-    """Load today's zone saved by evening bot"""
+    """Load zone valid for today's trading session."""
     try:
         if not os.path.exists(ZONE_FILE):
             return None
         with open(ZONE_FILE) as f:
             zone = json.load(f)
-        # Only valid if saved today
-        today = datetime.now(IST).strftime('%d %b %Y')
-        if zone.get('date') != today:
-            return None
         if zone.get('used'):
             return None
+        # Evening scan tags zone for next trading day
+        valid = zone.get('trade_date') or zone.get('date')
+        if valid != today_str():
+            return None
         return zone
-    except:
+    except Exception:
         return None
 
 

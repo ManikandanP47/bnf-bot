@@ -253,6 +253,10 @@ class TraderBrain:
             return round(row[0] / total * 100, 1) if total > 0 else None
         return None
 
+    def get_pattern_winrate(self, key: str, min_samples: int = 5):
+        """Alias used by RiskAgent."""
+        return self.get_pattern_wr(key, min_samples)
+
     def fractional_kelly(self) -> float:
         """
         Fractional Kelly position sizing.
@@ -449,6 +453,7 @@ class LearningAgent(threading.Thread):
             'win_rate':       t['win_rate'],
             'total_trades':   t['total_trades'],
             'kelly':          t['kelly'],
+            'learning_stage': t.get('learning_stage', 'EARLY'),
         })
 
     def run(self):

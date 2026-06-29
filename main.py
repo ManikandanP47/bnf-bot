@@ -40,15 +40,22 @@ from agents.learning_agent  import LearningAgent, BRAIN
 # All safety modules
 from src.safety             import check_trading_day, check_circuit_breaker
 from src.scanner            import analyse
-from src.zone_manager       import save_zone
+from src.zone_manager       import save_zone, load_zone, apply_zone_to_state
 from src.premarket          import run_premarket_scan, format_premarket_telegram
+from src.capital_guard      import format_morning_brief
 
 IST = pytz.timezone('Asia/Kolkata')
 
 
 def reconcile_on_startup(messenger: Messenger):
     from src.safety import reconcile_positions
-    token  = os.getenv('GROWW_ACCESS_TOKEN', '')
+    token = STATE.get('system.groww_token', '')
+    if not token:
+        try:
+            from agents.data_agent import DataAgent
+            token = DataAgent().get_groww_token()
+        except Exception:
+            token = os.getenv('GROWW_ACCESS_TOKEN', '')
     result = reconcile_positions(token)
     alert  = result.get('alert')
     if alert:
@@ -57,11 +64,39 @@ def reconcile_on_startup(messenger: Messenger):
         print(f"  ✅ Reconciliation: {result.get('status', 'OK')}")
 
 
+def load_zone_on_startup(messenger: Messenger):
+    """Restore tonight's plan after restart — critical for intraday entries."""
+    zone = load_zone()
+    apply_zone_to_state(zone)
+    if zone and not zone.get('used'):
+        messenger.send(
+            f"📌 *Zone restored from disk*\n"
+            f"{zone.get('bias')} | "
+            f"{zone.get('zone_low', 0):,.0f}–{zone.get('zone_high', 0):,.0f}\n"
+            f"Option: *{zone.get('name', '')}*\n"
+            f"_Watching for pullback_ 👀"
+        )
+
+
+def send_morning_brief_if_due(messenger: Messenger, last_sent: int) -> int:
+    """9:20 AM brief, or on startup if bot missed it."""
+    now = datetime.now(IST)
+    if now.weekday() >= 5:
+        return last_sent
+    due = (now.hour == 9 and 19 <= now.minute <= 25)
+    missed = (now.hour == 9 and now.minute >= 26 and last_sent != now.day)
+    if (due or missed) and last_sent != now.day:
+        messenger.send(format_morning_brief())
+        return now.day
+    return last_sent
+
+
 def scheduler(messenger: Messenger):
     last_premarket = -1
     last_evening   = -1
     last_weekly    = -1
     last_day_reset = -1
+    last_morning   = -1
 
     while STATE.get('system.running'):
         try:
@@ -101,7 +136,11 @@ def scheduler(messenger: Messenger):
                 STATE.set('brain.today_pnl',    0.0)
                 if weekday == 0:
                     STATE.set('system.weekly_losses', 0)
+                    STATE.set('system.week_pnl',      0.0)
                     STATE.set('system.paused', False)
+
+            # 9:20 AM — always know bot status + zone
+            last_morning = send_morning_brief_if_due(messenger, last_morning)
 
             # Wide window 9:00-9:14 AM -- handles restarts gracefully
             if hour == 9 and minute < 15 and last_premarket != now.day:
@@ -186,6 +225,7 @@ def main():
     msg = Messenger()
     print("\n🔍 Startup checks...")
     reconcile_on_startup(msg)
+    load_zone_on_startup(msg)
     print("\n🚀 Starting agents...")
     agents = [
         DataAgent(),
@@ -217,6 +257,9 @@ def main():
         f"_You approve each trade before entry_ 🎯"
     )
     print("\n✅ All agents running")
+    now = datetime.now(IST)
+    if now.weekday() < 5 and 9 <= now.hour <= 11:
+        msg.send(format_morning_brief())
     try:
         scheduler(msg)
     except KeyboardInterrupt:

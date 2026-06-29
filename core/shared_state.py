@@ -106,6 +106,7 @@ class SharedState:
                 'last_lesson':        '',
                 'monthly_pnl':        {},
                 'today_pnl':          0.0,
+                'learning_stage':     'EARLY',
             },
 
             # ── System Health ─────────────────────────────────────
@@ -118,6 +119,7 @@ class SharedState:
                 'errors':         [],
                 'weekly_losses':  0,       # Consecutive loss circuit breaker
                 'week_start':     '',      # Track which week
+                'week_pnl':       0.0,     # Cumulative week P&L for loss cap
                 'agent_status': {
                     'data':      'STARTING',
                     'analysis':  'STARTING',

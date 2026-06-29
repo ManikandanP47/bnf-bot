@@ -39,6 +39,24 @@ class RiskAgent(threading.Thread):
         regime   = signal.get('regime', '')
         rsi      = signal.get('rsi', 50)
 
+        # ── Capital loss caps (salary trader protection) ──────────
+        from src.capital_guard import check_daily_loss_cap, check_weekly_loss_cap
+        daily_cap = check_daily_loss_cap()
+        if daily_cap['blocked']:
+            return {'approved': False, 'reason': daily_cap['reason']}
+        weekly_cap = check_weekly_loss_cap()
+        if weekly_cap['blocked']:
+            STATE.set('system.paused', True)
+            return {'approved': False, 'reason': weekly_cap['reason']}
+
+        # ── Event calendar (RBI, Fed, monthly expiry) ─────────────
+        from src.trade_filters import is_event_day
+        event = is_event_day()
+        if event.get('skip'):
+            return {'approved': False, 'reason': event['reason']}
+        if event.get('caution'):
+            warnings.append(event['reason'])
+
         # ── Manual pause check ────────────────────────────────────
         if STATE.get('system.paused'):
             return {
@@ -123,10 +141,35 @@ class RiskAgent(threading.Thread):
         if regime == 'RANGING':
             warnings.append("⚠️ Ranging market — proceed carefully")
 
-        # ── Global market check ───────────────────────────────────
-        # Skip S&P500 check - using Groww API only for consistency
-        # Removed yfinance dependency to reduce external calls
-        pass
+        # ── Master filters (volume, ATR, global market) ───────────
+        try:
+            import pandas as pd
+            from src.trade_filters import run_all_filters
+            zone    = STATE.get('zone', {})
+            premium = zone.get('premium', 265)
+            c15     = STATE.get('market.candles_15m', [])
+            if len(c15) >= 10:
+                df = pd.DataFrame(c15)
+                df = df.rename(columns={
+                    'open': 'Open', 'high': 'High',
+                    'low': 'Low', 'close': 'Close', 'volume': 'Volume',
+                })
+                filt = run_all_filters(trend, df, premium, score)
+                if not filt.get('proceed'):
+                    return {
+                        'approved': False,
+                        'reason':   filt.get('reason', 'Filter blocked'),
+                    }
+                for r in filt.get('reasons', []):
+                    if r:
+                        reasons.append(r)
+                for w in filt.get('warnings', []):
+                    if w:
+                        warnings.append(w)
+                if filt.get('dynamic_sl'):
+                    STATE.set('trade.dynamic_sl', filt['dynamic_sl'])
+        except Exception as e:
+            warnings.append(f"⚠️ Trade filters skipped: {str(e)[:40]}")
 
         # ── After 2 PM no new entries ─────────────────────────────
         if datetime.now(IST).time() >= dtime(14, 0):
@@ -211,20 +254,45 @@ class ExecutionAgent(threading.Thread):
 
     def calculate_trade_params(self, signal: dict) -> dict:
         """Build precise entry parameters using ATR-adjusted SL/Target"""
+        from src.capital_guard import compute_lots
+        from src.premium_feed import fetch_option_ltp
+
         price   = signal.get('price', 0)
-        trend   = signal.get('trend', 'BULLISH')
         atr     = STATE.get('market.atr', 500)
         zone    = STATE.get('zone')
         premium = zone.get('premium', 265) if zone else 265
 
-        # ATR-based SL (calibrated from real BankNifty ATR ranges)
-        if   atr < 486:  sl_pct, tgt_mul = 0.25, 2.5
-        elif atr < 875:  sl_pct, tgt_mul = 0.30, 2.0
-        elif atr < 1159: sl_pct, tgt_mul = 0.35, 2.0
-        else:            sl_pct, tgt_mul = 0.40, 1.8
+        # Live option premium when available
+        if zone:
+            live_prem = fetch_option_ltp(
+                zone.get('strike', 0),
+                zone.get('opt_type', 'CE'),
+                zone.get('expiry', ''),
+            )
+            if live_prem > 0:
+                premium = round(live_prem, 0)
 
-        sl_prem  = round(premium * (1 - sl_pct), 0)
-        tgt_prem = round(premium * tgt_mul, 0)
+        # Dynamic SL from master filters, else ATR tiers
+        dyn = STATE.get('trade.dynamic_sl')
+        if dyn:
+            sl_prem  = dyn['sl_prem']
+            tgt_prem = dyn['tgt_prem']
+            sl_pct   = dyn['sl_pct']
+            tgt_mul  = dyn['tgt_mul']
+        else:
+            if   atr < 486:  sl_pct, tgt_mul = 0.25, 2.5
+            elif atr < 875:  sl_pct, tgt_mul = 0.30, 2.0
+            elif atr < 1159: sl_pct, tgt_mul = 0.35, 2.0
+            else:            sl_pct, tgt_mul = 0.40, 1.8
+            sl_prem  = round(premium * (1 - sl_pct), 0)
+            tgt_prem = round(premium * tgt_mul, 0)
+
+        brain = STATE.get('brain', {})
+        lots  = compute_lots(
+            brain.get('kelly', 0.25),
+            brain.get('total_trades', 0),
+        )
+        qty   = lots * 15
 
         return {
             'name':     zone.get('option_name', f'BANKNIFTY {zone.get("strike", 0)} {zone.get("opt_type", "CE")}') if zone else '',
@@ -234,9 +302,11 @@ class ExecutionAgent(threading.Thread):
             'premium':  premium,
             'sl_prem':  sl_prem,
             'tgt_prem': tgt_prem,
-            'lot_cost': premium * 15,
-            'max_loss': round(premium * sl_pct * 15, 0),
-            'max_gain': round(premium * (tgt_mul-1) * 15, 0),
+            'lots':     lots,
+            'qty':      qty,
+            'lot_cost': premium * qty,
+            'max_loss': round(premium * sl_pct * qty, 0),
+            'max_gain': round(premium * (tgt_mul - 1) * qty, 0),
         }
 
     def place_order(self, params: dict) -> dict:
@@ -273,7 +343,7 @@ class ExecutionAgent(threading.Thread):
                 params['expiry'],
                 params['sl_prem'],
                 params['tgt_prem'],
-                lots=1
+                lots=params.get('lots', 1)
             )
         except Exception as e:
             error_str = str(e).lower()
@@ -297,7 +367,7 @@ class ExecutionAgent(threading.Thread):
                         params['expiry'],
                         params['sl_prem'],
                         params['tgt_prem'],
-                        lots=1
+                        lots=params.get('lots', 1)
                     )
                     if result.get('success'):
                         print(f"✅ Order placed after token refresh")
@@ -333,7 +403,7 @@ class ExecutionAgent(threading.Thread):
             f"BNF: {price:,.0f} | {session} | {regime}\n\n"
             f"Option: *{params['name']}*\n"
             f"Premium: ₹{params['premium']}/unit\n"
-            f"Cost:    ₹{params['lot_cost']:,} (1 lot)\n\n"
+            f"Cost:    ₹{params['lot_cost']:,} ({params.get('lots', 1)} lot)\n\n"
             f"🛑 SL:     ₹{params['sl_prem']}\n"
             f"🎯 Target: ₹{params['tgt_prem']}\n"
             f"📊 Max Loss:  ₹{params['max_loss']:,}\n"
@@ -413,6 +483,11 @@ class ExecutionAgent(threading.Thread):
                     result = self.place_order(params)
 
                     if result.get('success'):
+                        qty = params.get('qty', 15)
+                        from src.zone_manager import mark_zone_used
+                        mark_zone_used()
+                        STATE.set('trade.dynamic_sl', None)
+
                         # Update position state
                         STATE.update('position', {
                             'open':         True,
@@ -425,7 +500,9 @@ class ExecutionAgent(threading.Thread):
                             'peak_premium': params['premium'],
                             'leg1_done':    False,
                             'leg1_profit':  0,
-                            'qty':          15,
+                            'qty':          qty,
+                            'opt_type':     params.get('opt_type', 'CE'),
+                            'strike':       params.get('strike', 0),
                             'learning_id':  learning_id,
                             'bnf_at_entry': signal.get('price', 0),
                         })
@@ -450,7 +527,7 @@ class ExecutionAgent(threading.Thread):
                             f"━━━━━━━━━━━━━━━━━━━\n"
                             f"Option: *{params['name']}*\n"
                             f"Premium: ₹{params['premium']}/unit\n"
-                            f"Cost:    ₹{params['lot_cost']:,} (1 lot)\n\n"
+                            f"Cost:    ₹{params['lot_cost']:,} ({params.get('lots', 1)} lot)\n\n"
                             f"🛑 SL:     ₹{params['sl_prem']}\n"
                             f"🎯 Target: ₹{params['tgt_prem']}\n"
                             f"📊 Max Loss:  ₹{params['max_loss']:,}\n"
@@ -501,18 +578,12 @@ class MonitorAgent(threading.Thread):
         leg1_done    = position.get('leg1_done', False)
         learning_id  = position.get('learning_id', 0)
         bnf_entry    = position.get('bnf_at_entry', current)
+        qty          = position.get('qty', 15)
+        leg1_units   = qty // 2
+        leg2_units   = qty - leg1_units
 
-        # Estimate current premium from BNF movement
-        # Delta varies by moneyness — OTM options have lower delta
-        bnf_move  = current - bnf_entry
-        strike    = STATE.get('zone.strike', 0)
-        otm_gap   = abs(strike - bnf_entry) if strike and bnf_entry else 300
-        if   otm_gap > 500: delta = 0.20   # Deep OTM
-        elif otm_gap > 300: delta = 0.28   # OTM
-        elif otm_gap > 150: delta = 0.38   # Slightly OTM
-        else:               delta = 0.50   # Near ATM
-        est_prem  = round(entry + bnf_move * delta, 1)
-        est_prem  = max(est_prem, 5)  # Floor at Rs 5
+        from src.premium_feed import get_position_premium
+        est_prem = get_position_premium(position, current)
 
         # Update peak
         new_peak = max(peak, est_prem)
@@ -536,20 +607,20 @@ class MonitorAgent(threading.Thread):
         if datetime.now(IST).time() >= dtime(15, 10):
             exit_now    = True
             exit_reason = f"⏰ EOD exit at ₹{est_prem:.0f}"
-            pnl_rs      = round((est_prem - entry) * 15, 0)
+            pnl_rs      = round((est_prem - entry) * qty, 0)
 
         # Leg 1 exit (50% at 1.5x)
         elif not leg1_done and est_prem >= entry * 1.5:
-            leg1_profit = round((est_prem - entry) * 7, 0)
+            leg1_profit = round((est_prem - entry) * leg1_units, 0)
             STATE.set('position.leg1_done', True)
             STATE.set('position.leg1_profit', leg1_profit)
             STATE.set('position.trail_sl', entry)  # Move SL to breakeven
 
             msg = (
                 f"🎯 *Leg 1 Profit Locked!*\n"
-                f"Exited 7 units at ₹{est_prem:.0f}\n"
+                f"Exited {leg1_units} units at ₹{est_prem:.0f}\n"
                 f"Profit: ₹{leg1_profit:,} secured ✅\n"
-                f"Remaining 8 units: SL moved to breakeven ₹{entry:.0f}\n"
+                f"Remaining {leg2_units} units: SL moved to breakeven ₹{entry:.0f}\n"
                 f"Target: ₹{tgt_prem:.0f} — free trade now!"
             )
             self.messenger.send(msg)
@@ -559,7 +630,7 @@ class MonitorAgent(threading.Thread):
         elif est_prem >= tgt_prem:
             exit_now    = True
             exit_reason = f"🎯 Full target ₹{tgt_prem:.0f} hit!"
-            pnl_rs      = round((est_prem - entry) * (8 if leg1_done else 15), 0)
+            pnl_rs      = round((est_prem - entry) * (leg2_units if leg1_done else qty), 0)
             if leg1_done:
                 pnl_rs += position.get('leg1_profit', 0)
 
@@ -567,7 +638,7 @@ class MonitorAgent(threading.Thread):
         elif est_prem <= new_trail_sl and new_peak > entry * 1.2:
             exit_now    = True
             exit_reason = f"📈 Trail SL at ₹{new_trail_sl:.0f} (peak ₹{new_peak:.0f})"
-            pnl_rs      = round((new_trail_sl - entry) * (8 if leg1_done else 15), 0)
+            pnl_rs      = round((new_trail_sl - entry) * (leg2_units if leg1_done else qty), 0)
             if leg1_done:
                 pnl_rs += position.get('leg1_profit', 0)
 
@@ -575,12 +646,12 @@ class MonitorAgent(threading.Thread):
         elif est_prem <= sl_from_initial:
             exit_now    = True
             exit_reason = f"🛑 SL hit at ₹{sl_from_initial:.0f}"
-            pnl_rs      = round((est_prem - entry) * 15, 0)
+            pnl_rs      = round((est_prem - entry) * qty, 0)
 
         # ── Execute exit ──────────────────────────────────────────
         if exit_now:
             emoji   = '🟢' if pnl_rs >= 0 else '🔴'
-            pnl_pct = round(pnl_rs / (entry * 15) * 100, 1) if entry else 0
+            pnl_pct = round(pnl_rs / (entry * qty) * 100, 1) if entry and qty else 0
 
             # Track consecutive losses for circuit breaker
             now_ist  = datetime.now(IST)
@@ -649,6 +720,16 @@ class MonitorAgent(threading.Thread):
             # Update today P&L
             today_pnl = STATE.get('brain.today_pnl', 0) + pnl_rs
             STATE.set('brain.today_pnl', today_pnl)
+            week_pnl = STATE.get('system.week_pnl', 0) + pnl_rs
+            STATE.set('system.week_pnl', week_pnl)
+
+            from src.capital_guard import check_weekly_loss_cap, MAX_WEEKLY_LOSS_RS
+            if week_pnl <= -MAX_WEEKLY_LOSS_RS:
+                STATE.set('system.paused', True)
+                self.messenger.send(
+                    f"🛑 *Weekly loss cap reached* (₹{week_pnl:,.0f})\n"
+                    f"Bot paused until Monday. Capital protected."
+                )
 
             # Track weekly losses for circuit breaker
             if pnl_rs < 0:
@@ -688,7 +769,8 @@ class MonitorAgent(threading.Thread):
             if hour != self.last_hourly:
                 self.last_hourly = hour
                 leg1_p = position.get('leg1_profit', 0)
-                total_pnl = round((est_prem - entry) * (8 if leg1_done else 15), 0)
+                rem    = leg2_units if leg1_done else qty
+                total_pnl = round((est_prem - entry) * rem, 0)
                 if leg1_done:
                     total_pnl += leg1_p
                 emoji = '📈' if total_pnl >= 0 else '📉'
