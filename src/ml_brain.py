@@ -1,10 +1,10 @@
 """
 ML Brain — learns from virtual + paper trade outcomes.
 
-Uses scikit-learn (Random Forest) on features logged at entry.
-Retrains as shadow/paper trades close. Blends with pattern_memory + RAG.
+Phase 1 (25+ samples): Random Forest
+Phase 2 (100+ samples): Neural net (MLP) auto-activates; predictions blend both.
 
-Neural nets need 100+ samples; this model activates at ML_MIN_SAMPLES (default 25).
+Retrains as shadow/paper trades close. Blends with pattern_memory + RAG.
 """
 
 import os
@@ -19,6 +19,8 @@ MODEL_DIR = os.getenv('ML_MODEL_DIR', 'models')
 MODEL_FILE = os.path.join(MODEL_DIR, 'win_predictor.joblib')
 META_FILE = os.path.join(MODEL_DIR, 'win_predictor_meta.json')
 ML_MIN_SAMPLES = int(os.getenv('ML_MIN_SAMPLES', '25'))
+ML_NN_MIN_SAMPLES = int(os.getenv('ML_NN_MIN_SAMPLES', '100'))
+ML_NN_ENABLED = os.getenv('ML_NN_ENABLED', 'true').lower() == 'true'
 ML_ENABLED = os.getenv('ML_LEARNING', 'true').lower() == 'true'
 
 SESSIONS = ('MORNING_TREND', 'AFTERNOON_MOVE', 'OPENING_CHAOS', 'LUNCH', 'EOD')
@@ -156,10 +158,75 @@ def _feature_names() -> list:
     return names
 
 
+def _build_xy(rows: list):
+    import numpy as np
+    names = _feature_names()
+    X = np.array([[r.get(k, 0) for k in names] for r in rows], dtype=float)
+    y = np.array([r['label'] for r in rows], dtype=int)
+    return names, X, y
+
+
+def _cv_accuracy(clf, X, y, n: int) -> float:
+    if n < 15:
+        return 0.0
+    try:
+        from sklearn.model_selection import cross_val_score
+        scores = cross_val_score(clf, X, y, cv=min(5, max(2, n // 5)), scoring='accuracy')
+        return round(float(scores.mean()) * 100, 1)
+    except Exception:
+        return 0.0
+
+
+def _train_rf(X, y, n: int) -> dict:
+    from sklearn.ensemble import RandomForestClassifier
+    clf = RandomForestClassifier(
+        n_estimators=80,
+        max_depth=6,
+        min_samples_leaf=2,
+        class_weight='balanced',
+        random_state=42,
+    )
+    clf.fit(X, y)
+    cv = _cv_accuracy(clf, X, y, n)
+    imp = sorted(zip(_feature_names(), clf.feature_importances_), key=lambda x: -x[1])[:3]
+    return {
+        'model': clf,
+        'cv_accuracy': cv,
+        'top_features': ', '.join(f'{k}:{v:.2f}' for k, v in imp),
+    }
+
+
+def _train_nn(X, y, n: int) -> dict:
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.pipeline import Pipeline
+
+    mlp = Pipeline([
+        ('scaler', StandardScaler()),
+        ('mlp', MLPClassifier(
+            hidden_layer_sizes=(32, 16),
+            activation='relu',
+            max_iter=800,
+            early_stopping=True,
+            validation_fraction=0.15,
+            n_iter_no_change=20,
+            random_state=42,
+        )),
+    ])
+    mlp.fit(X, y)
+    cv = _cv_accuracy(mlp, X, y, n)
+    return {'model': mlp, 'cv_accuracy': cv, 'top_features': 'neural net (32→16)'}
+
+
+def _proba_pct(clf, X) -> float:
+    proba = clf.predict_proba(X)[0]
+    win_idx = list(clf.classes_).index(1) if 1 in clf.classes_ else 0
+    return round(float(proba[win_idx]) * 100, 1)
+
+
 def train_model(force: bool = False) -> dict:
     """
-    Train Random Forest on all labeled virtual + paper trades.
-    Saves model to models/win_predictor.joblib
+    Train RF at 25+ samples; auto-add neural net (MLP) at 100+ samples.
     """
     if not ML_ENABLED:
         return {'ok': False, 'reason': 'ML_LEARNING=false'}
@@ -170,57 +237,66 @@ def train_model(force: bool = False) -> dict:
         return {'ok': False, 'reason': f'need {ML_MIN_SAMPLES} samples, have {n}', 'samples': n}
 
     try:
-        import numpy as np
-        from sklearn.ensemble import RandomForestClassifier
-        from sklearn.model_selection import cross_val_score
         import joblib
     except ImportError:
         return {'ok': False, 'reason': 'pip install scikit-learn joblib'}
 
-    names = _feature_names()
-    X = np.array([[r.get(k, 0) for k in names] for r in rows], dtype=float)
-    y = np.array([r['label'] for r in rows], dtype=int)
-
+    names, X, y = _build_xy(rows)
     if len(set(y)) < 2:
         return {'ok': False, 'reason': 'need both wins and losses', 'samples': n}
 
-    clf = RandomForestClassifier(
-        n_estimators=80,
-        max_depth=6,
-        min_samples_leaf=2,
-        class_weight='balanced',
-        random_state=42,
-    )
-    clf.fit(X, y)
+    rf_info = _train_rf(X, y, n)
+    bundle = {'features': names, 'rf': rf_info['model'], 'nn': None}
 
-    cv_wr = 0.0
-    if n >= 15:
+    nn_info = None
+    nn_active = False
+    if ML_NN_ENABLED and n >= ML_NN_MIN_SAMPLES:
         try:
-            scores = cross_val_score(clf, X, y, cv=min(5, n // 3), scoring='accuracy')
-            cv_wr = round(float(scores.mean()) * 100, 1)
-        except Exception:
-            pass
+            nn_info = _train_nn(X, y, n)
+            bundle['nn'] = nn_info['model']
+            nn_active = True
+        except Exception as e:
+            nn_info = {'error': str(e)[:80]}
+
+    active = 'ensemble' if nn_active else 'rf'
+    bundle['active'] = active
+    _ensure_model_dir()
+    joblib.dump(bundle, MODEL_FILE)
 
     train_wr = round(float(y.mean()) * 100, 1)
-    _ensure_model_dir()
-    joblib.dump({'model': clf, 'features': names}, MODEL_FILE)
-
-    importances = sorted(zip(names, clf.feature_importances_), key=lambda x: -x[1])[:3]
-    top_features = ', '.join(f'{k}:{v:.2f}' for k, v in importances)
-
     meta = {
         'trained_at': datetime.now(IST).strftime('%Y-%m-%d %H:%M'),
         'samples': n,
         'wins': int(y.sum()),
         'losses': int(len(y) - y.sum()),
         'train_win_rate': train_wr,
-        'cv_accuracy': cv_wr,
-        'top_features': top_features,
+        'active': active,
+        'rf': {
+            'cv_accuracy': rf_info['cv_accuracy'],
+            'top_features': rf_info['top_features'],
+        },
+        'nn': None,
+        # legacy fields for older readers
+        'cv_accuracy': rf_info['cv_accuracy'],
+        'top_features': rf_info['top_features'],
     }
+    if nn_info and nn_info.get('cv_accuracy') is not None:
+        meta['nn'] = {
+            'cv_accuracy': nn_info['cv_accuracy'],
+            'top_features': nn_info.get('top_features', ''),
+            'min_samples': ML_NN_MIN_SAMPLES,
+        }
+        meta['cv_accuracy'] = round(
+            (rf_info['cv_accuracy'] * 0.4 + nn_info['cv_accuracy'] * 0.6), 1
+        )
+
     with open(META_FILE, 'w') as f:
         json.dump(meta, f)
 
-    return {'ok': True, **meta}
+    msg = f"RF CV {rf_info['cv_accuracy']}%"
+    if nn_active:
+        msg += f" | NN CV {nn_info['cv_accuracy']}% (ensemble active)"
+    return {'ok': True, 'samples': n, 'active': active, 'message': msg, **meta}
 
 
 def _load_model():
@@ -285,39 +361,60 @@ def features_from_signal(signal: dict, params: dict = None) -> dict:
 
 
 def predict_win_probability(signal: dict, params: dict = None) -> dict:
-    """
-    ML win probability 0–100. ready=False if model not trained yet.
-    """
+    """ML win probability 0–100. Uses RF; blends with NN when 100+ samples trained."""
     if not ML_ENABLED:
         return {'ready': False, 'reason': 'disabled'}
 
     bundle = _load_model()
     meta = _meta()
     if not bundle or not meta.get('samples'):
-        return {'ready': False, 'reason': 'not trained', 'samples': meta.get('samples', 0)}
+        rows = _load_training_rows()
+        return {
+            'ready': False,
+            'reason': 'not trained',
+            'samples': len(rows),
+            'nn_in': max(0, ML_NN_MIN_SAMPLES - len(rows)),
+        }
 
     try:
         import numpy as np
         feats = features_from_signal(signal, params)
         names = bundle['features']
         X = np.array([[feats.get(k, 0) for k in names]], dtype=float)
-        clf = bundle['model']
-        proba = clf.predict_proba(X)[0]
-        win_idx = list(clf.classes_).index(1) if 1 in clf.classes_ else 0
-        prob = round(float(proba[win_idx]) * 100, 1)
 
-        importances = sorted(
-            zip(names, clf.feature_importances_),
-            key=lambda x: -x[1],
-        )[:3]
-        top = ', '.join(f'{k}:{v:.2f}' for k, v in importances)
+        rf = bundle.get('rf') or bundle.get('model')
+        nn = bundle.get('nn')
+        active = bundle.get('active', 'rf')
+
+        if rf is None:
+            return {'ready': False, 'reason': 'no model'}
+
+        rf_prob = _proba_pct(rf, X)
+        nn_prob = None
+        if nn is not None:
+            nn_prob = _proba_pct(nn, X)
+
+        if nn_prob is not None and active == 'ensemble':
+            prob = round(rf_prob * 0.35 + nn_prob * 0.65, 1)
+            model_label = 'RF+NN ensemble'
+        else:
+            prob = rf_prob
+            model_label = 'Random Forest'
+
+        rf_meta = meta.get('rf') or {}
+        nn_meta = meta.get('nn') or {}
 
         return {
             'ready': True,
             'prob_pct': max(15, min(90, prob)),
             'samples': meta.get('samples', 0),
             'cv_accuracy': meta.get('cv_accuracy', 0),
-            'top_features': top,
+            'model': model_label,
+            'rf_prob': rf_prob,
+            'nn_prob': nn_prob,
+            'top_features': rf_meta.get('top_features', meta.get('top_features', '')),
+            'nn_active': nn_prob is not None,
+            'nn_cv': nn_meta.get('cv_accuracy', 0),
         }
     except Exception as e:
         return {'ready': False, 'reason': str(e)[:60]}
@@ -331,11 +428,11 @@ def maybe_retrain():
     n = len(rows)
     meta = _meta()
     last_n = meta.get('samples', 0)
-    # Retrain every 5 new samples or first time past threshold
-    if n >= ML_MIN_SAMPLES and (n - last_n >= 5 or not meta.get('samples')):
+    crossed_nn = last_n < ML_NN_MIN_SAMPLES <= n
+    if n >= ML_MIN_SAMPLES and (n - last_n >= 5 or not meta.get('samples') or crossed_nn):
         result = train_model()
         if result.get('ok'):
-            print(f"🧠 ML retrained: {result['samples']} samples, CV {result.get('cv_accuracy')}%")
+            print(f"🧠 ML retrained ({result.get('active')}): {result['samples']} samples — {result.get('message', '')}")
         return result
     return {'ok': False, 'samples': n, 'reason': 'waiting for more data'}
 
@@ -344,22 +441,34 @@ def format_ml_status() -> str:
     meta = _meta()
     rows = _load_training_rows()
     n = len(rows)
+    nn_left = max(0, ML_NN_MIN_SAMPLES - n)
+
     lines = [
-        '🤖 *ML Brain* (Random Forest)',
-        f"Samples: {n} (min {ML_MIN_SAMPLES} to train)",
+        '🤖 *ML Brain*',
+        f"Samples: {n} (RF at {ML_MIN_SAMPLES}+ | NN at {ML_NN_MIN_SAMPLES}+)",
     ]
+
     if meta.get('samples'):
-        lines += [
-            f"Model: trained {meta.get('trained_at', '?')}",
-            f"  Data: {meta.get('wins', 0)}W / {meta.get('losses', 0)}L",
-            f"  CV accuracy: {meta.get('cv_accuracy', 0)}%",
-        ]
-        imp = meta.get('top_features', '')
-        if imp:
-            lines.append(f"  Key signals: {imp}")
+        active = meta.get('active', 'rf')
+        lines.append(f"Active: *{active}* — trained {meta.get('trained_at', '?')}")
+        lines.append(f"  Data: {meta.get('wins', 0)}W / {meta.get('losses', 0)}L")
+
+        rf = meta.get('rf') or {}
+        lines.append(f"  🌲 RF CV: {rf.get('cv_accuracy', meta.get('cv_accuracy', 0))}%")
+        if rf.get('top_features'):
+            lines.append(f"     {rf['top_features']}")
+
+        nn = meta.get('nn')
+        if nn:
+            lines.append(f"  🧠 NN CV: {nn.get('cv_accuracy', 0)}% (ensemble ON)")
+        elif nn_left > 0:
+            lines.append(f"  🧠 NN: {nn_left} more samples to auto-activate")
+        else:
+            lines.append('  🧠 NN: training on next retrain')
     else:
-        lines.append(f"_Collecting virtual trades — {ML_MIN_SAMPLES - n} more needed_")
-    lines.append('_Learns from every shadow + paper close automatically_')
+        lines.append(f"_RF needs {max(0, ML_MIN_SAMPLES - n)} more | NN at {ML_NN_MIN_SAMPLES}_")
+
+    lines.append('_Learns from every virtual + paper close automatically_')
     return '\n'.join(lines)
 
 
@@ -367,7 +476,11 @@ def format_ml_prediction_line(signal: dict, params: dict = None) -> str:
     p = predict_win_probability(signal, params)
     if not p.get('ready'):
         return ''
+    model = p.get('model', 'ML')
+    extra = ''
+    if p.get('nn_active'):
+        extra = f" | RF {p.get('rf_prob')}% + NN {p.get('nn_prob')}%"
     return (
-        f"🤖 *ML win chance:* {p['prob_pct']}% "
-        f"(trained on {p['samples']} trades, CV {p.get('cv_accuracy', 0)}%)"
+        f"🤖 *{model}:* {p['prob_pct']}% win chance "
+        f"({p['samples']} trades, CV {p.get('cv_accuracy', 0)}%{extra})"
     )

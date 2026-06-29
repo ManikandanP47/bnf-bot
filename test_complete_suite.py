@@ -111,7 +111,7 @@ modules = [
     'src.groww_client', 'src.groww_historical', 'src.expiry_picker',
     'src.shadow_learning', 'src.virtual_broker', 'src.ml_brain',
     'src.sim_learning_report', 'src.market_simulator', 'src.ops_backup',
-    'agents.groww_feed_agent', 'src.groww_api_guard', 'src.sim_notify',
+    'agents.groww_feed_agent',     'src.groww_api_guard', 'src.sim_notify', 'src.ml_brain',
 ]
 for mod in modules:
     try:

@@ -50,7 +50,7 @@ def format_full_help() -> str:
         "*Virtual training (live market, no money)*\n"
         "/shadow — Today's virtual CE/PE drills + learning phase status\n"
         "/simreport — Daily training digest or 2-week graduation WR\n"
-        "/ml — ML win model status (Random Forest on closed sims)\n"
+        "/ml — ML status: RF at 25+ samples, neural net auto at 100+\n"
         "/learn — RAG memory: rules + lessons from your trades\n"
         "/resetlearning — Clear graduation flag to re-send phase-end report\n\n"
         "*Diagnostics*\n"
