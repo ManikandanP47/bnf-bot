@@ -262,6 +262,27 @@ class RiskAgent(threading.Thread):
         except Exception as e:
             warnings.append(f"⚠️ Validator skipped: {str(e)[:40]}")
 
+        # ── Chart S/R + unified F&O flow (OI walls, theta, swing lines) ──
+        try:
+            from src.market_flow import flow_allows_trade
+            from src.chart_levels import check_chart_levels
+            flow_chk = flow_allows_trade(trend, price)
+            flow = flow_chk.get('flow', {})
+            STATE.set('signals.market_flow', flow)
+            if not flow_chk.get('ok', True):
+                return {'approved': False, 'reason': flow_chk['reason']}
+            chart = flow.get('chart', {})
+            chart_chk = check_chart_levels(price, trend, chart)
+            if not chart_chk.get('ok', True):
+                return {'approved': False, 'reason': chart_chk['reason']}
+            score += chart_chk.get('score_delta', 0)
+            warnings.extend(chart_chk.get('warnings', []))
+            for w in flow_chk.get('warnings', []):
+                if w:
+                    warnings.append(w)
+        except Exception as e:
+            warnings.append(f"⚠️ Flow check skipped: {str(e)[:40]}")
+
         return {
             'approved':   True,
             'reasons':    reasons,
@@ -610,6 +631,10 @@ class ExecutionAgent(threading.Thread):
         brain_note = STATE.get('brain.auto_rule_note', '')
         if brain_note:
             msg += f"\n🧠 _{brain_note}_\n"
+        flow = STATE.get('signals.market_flow') or STATE.get('market.flow')
+        if flow:
+            from src.market_flow import format_flow_compact
+            msg += format_flow_compact(flow)
         msg += (
             f"\n💰 *Min profit (leg 1 @ 1.5×):* ~₹{params.get('leg1_profit', 0):,}\n"
             f"_Confidence: {risk.get('confidence', 0)}%_"

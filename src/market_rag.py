@@ -35,6 +35,13 @@ SEED_CHUNKS = [
     ("mistake,THETA_DECAY", "LOSS", "Theta decay loss: direction OK but held too long. Exit by 2:30 PM or use tighter trail.", 1.0),
     ("mistake,CHASE", "LOSS", "Chased entry away from zone — premium paid too much. Wait for pullback.", 1.0),
     ("win,TARGET", "WIN", "Full target hit: setup + session + zone aligned. Brain should repeat this pattern combo.", 0.9),
+    ("oi,pcr,bullish", "RULE", "PCR > 1.2 with CE OI wall overhead = cautious CE. Wait for break above highest CALL OI strike.", 0.95),
+    ("oi,pcr,bearish", "RULE", "PCR < 0.7 = crowded puts. PE into heavy PUT support often bounces — need breakdown confirmation.", 0.95),
+    ("oi,maxpain", "RULE", "Price far from max pain into expiry = pin risk. Salary accounts avoid lottery bets near expiry.", 0.9),
+    ("oi,wall,resistance", "RULE", "Highest CALL OI strike = institutional resistance. Do not buy CE with target above CE wall without breakout.", 1.0),
+    ("chart,resistance", "RULE", "Auto 15m swing resistance within 0.1% = do not chase CE. Wait for close above line.", 0.95),
+    ("chart,support", "RULE", "Auto 15m swing support within 0.1% = do not chase PE. Wait for close below line.", 0.95),
+    ("vix,high", "RULE", "VIX > 20 = premium expensive + whipsaw. Skip or require score 9+.", 0.95),
 ]
 
 

@@ -241,7 +241,6 @@ class CommandListener(threading.Thread):
             return format_backtest_report()
 
         elif cmd == '/cpr':
-            from core.shared_state import STATE
             from src.cpr import format_cpr_report
             ctx = STATE.get('market.context') or {}
             from src.market_context import build_market_context
@@ -252,6 +251,12 @@ class CommandListener(threading.Thread):
         elif cmd == '/learn':
             from src.market_rag import format_learn_report
             return format_learn_report()
+
+        elif cmd == '/flow':
+            from src.market_flow import refresh_market_flow, format_flow_report
+            zone = STATE.get('zone') or {}
+            refresh_market_flow(zone.get('bias', 'BULLISH'))
+            return format_flow_report()
 
         elif cmd == '/help':
             return (
@@ -267,6 +272,7 @@ class CommandListener(threading.Thread):
                 "/context — PDH/PDL, theta, pivots\n"
                 "/backtest — History proxy backtest\n"
                 "/cpr — Central Pivot Range (TC/P/BC)\n"
+                "/flow — OI, VIX, EMA, theta, chart lines\n"
                 "/learn — RAG memory (rules + your trades)\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"

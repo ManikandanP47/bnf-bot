@@ -266,6 +266,21 @@ def run_knowledge_checks(signal: dict, candles_5m: list = None) -> dict:
     score_delta += lvl.get('score_delta', 0)
     warnings.extend(lvl.get('warnings', []))
 
+    from src.chart_levels import compute_chart_levels, check_chart_levels
+    c15 = STATE.get('market.candles_15m', [])
+    chart = compute_chart_levels(c5m, c15, price)
+    chart_r = check_chart_levels(price, bias, chart)
+    if not chart_r.get('ok', True):
+        return {
+            'ok': False,
+            'reason': chart_r['reason'],
+            'score_delta': 0,
+            'patterns': patterns,
+            'warnings': warnings,
+        }
+    score_delta += chart_r.get('score_delta', 0)
+    warnings.extend(chart_r.get('warnings', []))
+
     pat = detect_5m_patterns(c5m, bias)
     patterns = pat.get('patterns', [])
     score_delta += pat.get('score_delta', 0)

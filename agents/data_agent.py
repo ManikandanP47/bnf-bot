@@ -320,6 +320,9 @@ class DataAgent(threading.Thread):
                         try:
                             from src.market_context import refresh_market_context
                             refresh_market_context(self._token or '')
+                            from src.market_flow import refresh_market_flow
+                            zone = STATE.get('zone') or {}
+                            refresh_market_flow(zone.get('bias', 'BULLISH'))
                         except Exception:
                             pass
                     time.sleep(10)
