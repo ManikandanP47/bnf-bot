@@ -139,12 +139,33 @@ def send_morning_brief_if_due(messenger: Messenger, last_sent: int) -> int:
     return last_sent
 
 
+def send_morning_flow_if_due(messenger: Messenger, last_sent: int) -> int:
+    """9:25 AM F&O flow dashboard — same as /flow, pushed automatically."""
+    now = datetime.now(IST)
+    if now.weekday() >= 5:
+        return last_sent
+    from src.safety import check_trading_day
+    if not check_trading_day().get('trade'):
+        return last_sent
+    due = (now.hour == 9 and 24 <= now.minute <= 29)
+    missed = (
+        last_sent != now.day
+        and ((now.hour == 9 and now.minute >= 30) or (now.hour == 10 and now.minute < 15))
+    )
+    if (due or missed) and last_sent != now.day:
+        from src.market_flow import format_morning_flow_telegram
+        messenger.send(format_morning_flow_telegram())
+        return now.day
+    return last_sent
+
+
 def scheduler(messenger: Messenger):
     last_premarket = -1
     last_evening   = -1
     last_weekly    = -1
     last_day_reset = -1
     last_morning   = -1
+    last_morning_flow = -1
     last_daily     = -1
     last_skip      = -1
     last_readiness = -1
@@ -192,6 +213,9 @@ def scheduler(messenger: Messenger):
 
             # 9:20 AM — always know bot status + zone
             last_morning = send_morning_brief_if_due(messenger, last_morning)
+
+            # 9:25 AM — auto F&O flow (OI, VIX, EMA, chart lines)
+            last_morning_flow = send_morning_flow_if_due(messenger, last_morning_flow)
 
             # Wide window 9:00-9:14 AM -- handles restarts gracefully
             if hour == 9 and minute < 15 and last_premarket != now.day:
@@ -347,6 +371,7 @@ def main():
         f"Mode: {'📝 Paper (confirm each trade)' if paper else '💸 Live'}\n"
         f"Agents: All 7 running ✅\n"
         f"Pre-market: 9:00 AM IST\n"
+        f"Morning flow: 9:25 AM IST (auto /flow)\n"
         f"Evening scan: 8:15 PM IST\n\n"
         f"✑ *Your Commands*\n"
         f"/pause /resume /stop — Control bot\n"

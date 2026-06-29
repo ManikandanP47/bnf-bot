@@ -272,7 +272,7 @@ class CommandListener(threading.Thread):
                 "/context — PDH/PDL, theta, pivots\n"
                 "/backtest — History proxy backtest\n"
                 "/cpr — Central Pivot Range (TC/P/BC)\n"
-                "/flow — OI, VIX, EMA, theta, chart lines\n"
+                "/flow — OI, VIX, EMA, theta, chart lines (also 9:25 AM auto)\n"
                 "/learn — RAG memory (rules + your trades)\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"

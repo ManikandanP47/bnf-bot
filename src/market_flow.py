@@ -261,3 +261,23 @@ def format_flow_compact(flow: dict) -> str:
     if ch.get('resistance_15m'):
         lines.append(f"  Chart res: {ch['resistance_15m']:,.0f} | sup: {ch.get('support_15m', 0):,.0f}")
     return '\n'.join(lines)
+
+
+def format_morning_flow_telegram() -> str:
+    """Auto 9:25 AM summary — refreshes OI/VIX/EMA and posts to Telegram."""
+    from core.shared_state import STATE
+
+    zone = STATE.get('zone') or {}
+    bias = zone.get('bias', 'BULLISH')
+    refresh_market_flow(bias)
+
+    header = "☀️ *Morning F&O Flow* — auto 9:25 AM\n"
+    if zone.get('active'):
+        header += (
+            f"📌 Zone: {zone.get('low', 0):,.0f}–{zone.get('high', 0):,.0f} "
+            f"({zone.get('bias', '?')}) — watching for pullback\n\n"
+        )
+    else:
+        header += "📌 No active zone — bot stays quiet unless evening scan saves one\n\n"
+
+    return header + format_flow_report()
