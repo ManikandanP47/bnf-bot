@@ -284,12 +284,15 @@ class CommandListener(threading.Thread):
             return format_learn_report() + "\n\n" + format_shadow_brief() + tune_line
 
         elif cmd == '/shadow':
-            from src.shadow_learning import format_shadow_daily_section, learning_phase_info
+            from src.shadow_learning import (
+                format_shadow_daily_section, learning_phase_info, format_auto_learning_status,
+            )
             info = learning_phase_info()
             hdr = (
                 f"🎓 *Shadow Learning Status*\n"
                 f"Phase: {'LEARNING' if info['in_learning_phase'] else 'GRADUATED'}\n"
-                f"Days left: {info['days_left']}/{info['phase_days']}\n"
+                f"Days left: {info['days_left']}/{info['phase_days']}\n\n"
+                f"{format_auto_learning_status()}\n"
             )
             return hdr + format_shadow_daily_section()
 

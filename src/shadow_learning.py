@@ -82,6 +82,35 @@ def is_learning_phase() -> bool:
         return True
 
 
+def should_auto_paper_execute() -> bool:
+    """
+    During learning phase, auto-enter paper trades when all filters pass.
+    After graduation, user must tap Execute (precision mode).
+    """
+    if os.getenv('AUTO_PAPER_LEARNING', 'true').lower() != 'true':
+        return False
+    if os.getenv('PAPER_MODE', 'true').lower() != 'true':
+        return False
+    return is_learning_phase()
+
+
+def format_auto_learning_status() -> str:
+    """One-liner for /status and startup — what runs automatically."""
+    info = learning_phase_info()
+    if info['in_learning_phase']:
+        return (
+            f"🎓 *Auto-learning ON* ({info['days_left']}d left)\n"
+            f"  • Market scanned every 15s (9:15–3:30)\n"
+            f"  • Shadow drills auto on every setup (max {SHADOW_MAX_PER_DAY}/day)\n"
+            f"  • Paper entries auto when filters pass (max 1/day)\n"
+            f"  • Brain + RAG update on every shadow/paper close"
+        )
+    return (
+        "🎯 *Graduated mode* — shadow drills on; paper needs /execute\n"
+        "  Brain still learns from every trade you confirm"
+    )
+
+
 def learning_phase_info() -> dict:
     init_shadow_tables()
     conn = _conn()

@@ -376,6 +376,12 @@ class RiskAgent(threading.Thread):
         }
 
     def _needs_confirmation(self) -> bool:
+        try:
+            from src.shadow_learning import should_auto_paper_execute
+            if should_auto_paper_execute():
+                return False
+        except Exception:
+            pass
         confirm = os.getenv('CONFIRM_BEFORE_TRADE', 'auto').lower()
         if confirm == 'auto':
             return os.getenv('PAPER_MODE', 'true').lower() == 'true'
@@ -819,6 +825,23 @@ class ExecutionAgent(threading.Thread):
                             f"❌ *Execute blocked*\n{chk['reason']}"
                         )
                         continue
+
+                    try:
+                        from src.shadow_learning import should_auto_paper_execute
+                        from src.trade_probability import format_probability_line
+                        if should_auto_paper_execute():
+                            self.messenger.send(
+                                f"🎓 *Auto paper entry* (learning phase)\n"
+                                f"━━━━━━━━━━━━━━━━━━━\n"
+                                f"{signal.get('trend')} score {signal.get('score')} | "
+                                f"{params['name']}\n"
+                                f"Premium ~₹{params['premium']} | "
+                                f"SL ₹{params['sl_prem']} → Tgt ₹{params['tgt_prem']}\n"
+                                f"{format_probability_line(signal)}\n"
+                                f"_All filters passed — bot entering virtual trade to learn_"
+                            )
+                    except Exception:
+                        pass
 
                     # Record entry in brain
                     market_ctx = {
