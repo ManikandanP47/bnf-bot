@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 from core.shared_state import STATE
 IST = pytz.timezone('Asia/Kolkata')
 
-BANKNIFTY_SYMBOL = "NSE:BANKNIFTY"
+BANKNIFTY_SYMBOL = "NSE_BANKNIFTY"
 
 
 class CandleBuilder:
@@ -91,6 +91,7 @@ class DataAgent(threading.Thread):
                 STATE.set('system.groww_token', access_token)
                 from src.groww_client import clear_groww_client
                 clear_groww_client()
+                self._token = access_token
                 return access_token
         except Exception as e:
             STATE.add_error(f"Token: {str(e)[:40]}")
@@ -135,9 +136,13 @@ class DataAgent(threading.Thread):
                 if p > 0:
                     return {'price': p, 'volume': 1000, 'source': 'GROWW'}
         except Exception as e:
-            # Detect authentication errors and refresh token automatically
+            # Auth errors only — not symbol/format errors ("invalid symbol" ≠ bad token)
             error_str = str(e).lower()
-            if 'auth' in error_str or 'expired' in error_str or 'invalid' in error_str:
+            auth_err = (
+                'unauthorized', 'forbidden', 'expired', 'invalid token',
+                'token invalid', 'authentication', '401', '403',
+            )
+            if any(m in error_str for m in auth_err):
                 print(f"🔄 Token expired detected: {str(e)[:40]}")
                 from src.groww_client import clear_groww_client
                 clear_groww_client()

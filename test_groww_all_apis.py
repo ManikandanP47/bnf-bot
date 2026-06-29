@@ -270,10 +270,13 @@ def run_tests(token):
     print("\n── 10. DataAgent token path ──")
     try:
         from agents.data_agent import DataAgent
+        from agents.data_agent import BANKNIFTY_SYMBOL
+        assert BANKNIFTY_SYMBOL == "NSE_BANKNIFTY", f"wrong symbol: {BANKNIFTY_SYMBOL}"
         da = DataAgent()
         t = da.get_groww_token()
         if t:
             ok("DataAgent.get_groww_token()", f"{t[:12]}...")
+            da._token = t
             live = da.get_live_price()
             if live.get('price', 0) > 0:
                 ok("DataAgent.get_live_price()", f"₹{live['price']:,.2f} via {live.get('source')}")
