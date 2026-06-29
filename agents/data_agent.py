@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 from core.shared_state import STATE
 IST = pytz.timezone('Asia/Kolkata')
 
-BANKNIFTY_SYMBOL = "NSE_BANKNIFTY"
+BANKNIFTY_SYMBOL = "NSE:BANKNIFTY"
 
 
 class CandleBuilder:
