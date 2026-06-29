@@ -42,24 +42,21 @@ def skip(name, detail=""):
 
 
 def get_totp_token():
-    import pyotp
-    from growwapi import GrowwAPI
-    secret = os.getenv('GROWW_TOTP_SECRET', '')
-    api_key = os.getenv('GROWW_TOTP_TOKEN', '')
-    if not secret or not api_key:
-        bad("Credentials", "GROWW_TOTP_SECRET or GROWW_TOTP_TOKEN missing in .env")
+    from src.groww_auth import fetch_groww_token
+    try:
+        token = fetch_groww_token(max_retries=6, base_delay_sec=60)
+        ok("TOTP → access token", f"{token[:12]}...{token[-8:]}")
+        return token, None
+    except Exception as e:
+        bad("TOTP → access token", str(e)[:100])
         return None, None
-    code = pyotp.TOTP(secret).now()
-    token = GrowwAPI.get_access_token(api_key=api_key, totp=code)
-    if not token:
-        bad("TOTP → access token", "get_access_token returned empty")
-        return None, None
-    ok("TOTP → access token", f"{token[:12]}...{token[-8:]}")
-    return token, code
 
 
 def test_token_refresh():
     print("\n── Token refresh (second TOTP call) ──")
+    if os.getenv('GROWW_TEST_DOUBLE_AUTH', 'false').lower() != 'true':
+        skip("Token refresh", "set GROWW_TEST_DOUBLE_AUTH=true to avoid rate limits")
+        return None
     import pyotp
     from growwapi import GrowwAPI
     secret = os.getenv('GROWW_TOTP_SECRET', '')

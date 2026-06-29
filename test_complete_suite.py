@@ -152,13 +152,13 @@ section("4. Groww auth + live price")
 token = None
 try:
     import pyotp
-    from growwapi import GrowwAPI
+    from src.groww_auth import fetch_groww_token
     secret = os.getenv('GROWW_TOTP_SECRET', '')
-    api_key = os.getenv('GROWW_TOTP_TOKEN', '')
-    code = pyotp.TOTP(secret).now()
-    assert len(code) == 6
-    ok("TOTP generate", code)
-    token = GrowwAPI.get_access_token(api_key=api_key, totp=code)
+    code = pyotp.TOTP(secret).now() if secret else ''
+    if code:
+        assert len(code) == 6
+        ok("TOTP generate", code)
+    token = fetch_groww_token(max_retries=6, base_delay_sec=60)
     assert token and token.startswith('eyJ')
     ok("Groww auth", f"{token[:24]}...")
     STATE.set('system.groww_token', token)
