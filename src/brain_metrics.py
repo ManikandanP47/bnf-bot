@@ -273,6 +273,8 @@ def format_readiness_report() -> str:
     from src.capital_guard import LIVE_CAPITAL_RS
     from src.trade_analytics import compute_drawdown, compute_r_stats, session_expectancy
     r    = assess_live_readiness()
+    from core.shared_state import STATE
+    STATE.set('system.live_readiness_summary', r['reason'])
     conf = r['confidence']
     s    = conf.get('stats') or get_core_stats()
     dd   = compute_drawdown()

@@ -19,10 +19,10 @@ def fetch_option_ltp(strike: int, opt_type: str, expiry: str) -> float:
     if not token or not strike:
         return 0.0
     try:
-        from growwapi import GrowwAPI
+        from src.groww_client import get_groww_client
         from src.groww_symbols import groww_option_symbol
         symbol = groww_option_symbol('BANKNIFTY', strike, opt_type, expiry)
-        groww = GrowwAPI(token)
+        groww = get_groww_client(token)
         q = groww.get_ltp(
             exchange_trading_symbols=(symbol,),
             segment=groww.SEGMENT_FNO,

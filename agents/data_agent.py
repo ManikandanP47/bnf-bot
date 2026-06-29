@@ -89,6 +89,8 @@ class DataAgent(threading.Thread):
                 access_token = GrowwAPI.get_access_token(api_key=token, totp=totp)
                 # Store in STATE so Execution Agent can use it
                 STATE.set('system.groww_token', access_token)
+                from src.groww_client import clear_groww_client
+                clear_groww_client()
                 return access_token
         except Exception as e:
             STATE.add_error(f"Token: {str(e)[:40]}")
@@ -112,8 +114,8 @@ class DataAgent(threading.Thread):
         try:
             if not self._token:
                 self._token = self.get_groww_token()
-            from growwapi import GrowwAPI
-            groww = GrowwAPI(self._token)
+            from src.groww_client import get_groww_client
+            groww = get_groww_client(self._token)
             q = groww.get_ltp(
                 exchange_trading_symbols=(BANKNIFTY_SYMBOL,),
                 segment=groww.SEGMENT_CASH
@@ -137,11 +139,13 @@ class DataAgent(threading.Thread):
             error_str = str(e).lower()
             if 'auth' in error_str or 'expired' in error_str or 'invalid' in error_str:
                 print(f"🔄 Token expired detected: {str(e)[:40]}")
+                from src.groww_client import clear_groww_client
+                clear_groww_client()
                 self._token = self.get_groww_token()  # Auto-refresh
                 # Retry once with new token
                 try:
-                    from growwapi import GrowwAPI
-                    groww = GrowwAPI(self._token)
+                    from src.groww_client import get_groww_client
+                    groww = get_groww_client(self._token)
                     q = groww.get_ltp(
                         exchange_trading_symbols=(BANKNIFTY_SYMBOL,),
                         segment=groww.SEGMENT_CASH

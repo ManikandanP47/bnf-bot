@@ -20,6 +20,12 @@ import pytz
 from core.shared_state import STATE
 
 IST = pytz.timezone('Asia/Kolkata')
+POLL_TIMEOUT = 20  # Telegram long-poll seconds
+
+
+def _display_source(source: str) -> str:
+    """Avoid Telegram Markdown breaking on underscores (e.g. GROWW_HIST)."""
+    return str(source or 'N/A').replace('_', '-')
 
 
 class CommandListener(threading.Thread):
@@ -35,9 +41,9 @@ class CommandListener(threading.Thread):
         try:
             resp = requests.get(
                 f"https://api.telegram.org/bot{self.token}/getUpdates",
-                params={'offset': self.offset, 'timeout': 10,
+                params={'offset': self.offset, 'timeout': POLL_TIMEOUT,
                         'allowed_updates': ['message', 'callback_query']},
-                timeout=20
+                timeout=POLL_TIMEOUT + 10
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -127,7 +133,7 @@ class CommandListener(threading.Thread):
             mkt_open     = STATE.get('system.market_open', False)
             price        = STATE.get('market.price', 0)
             session      = STATE.get('market.session', 'CLOSED')
-            source       = STATE.get('market.data_source', 'N/A')
+            source       = _display_source(STATE.get('market.data_source', 'N/A'))
             pos_open     = STATE.get('position.open', False)
             pos_name     = STATE.get('position.name', '—')
             trades_today = STATE.get('brain.trades_today', 0)
@@ -141,8 +147,10 @@ class CommandListener(threading.Thread):
             agent_lines  = '\n'.join(
                 f"  {k.capitalize()}: {v}" for k, v in agents.items()
             )
-            from src.capital_guard import assess_live_readiness
-            live_chk = assess_live_readiness()
+            live_reason  = STATE.get(
+                'system.live_readiness_summary',
+                'Paper mode — send /readiness for full checklist',
+            )
             brain    = STATE.get('brain', {})
             return (
                 f"📊 *Bot Status — {now}*\n"
@@ -156,7 +164,7 @@ class CommandListener(threading.Thread):
                 f"*Today:* {trades_today} trade(s) | {pnl_emoji} ₹{today_pnl:,.0f}\n"
                 f"*Week losses:* {weekly_loss}/2\n"
                 f"*Brain:* {brain.get('learning_stage', 'EARLY')}\n\n"
-                f"*Live readiness:* {live_chk['reason']}"
+                f"*Live readiness:* {live_reason}"
             )
 
         elif cmd == '/pnl':
@@ -245,6 +253,18 @@ class CommandListener(threading.Thread):
 
         return f"❓ Unknown: `{cmd}`\nType /help for commands."
 
+    def _process_command(self, text: str):
+        try:
+            reply = self._handle(text)
+            if not self.messenger.send(reply):
+                print(f"⚠️  Telegram did not accept reply for {text}")
+        except Exception as e:
+            print(f"⚠️  Command handler error ({text}): {e}")
+            self.messenger.send(
+                f"Command failed: {str(e)[:180]}\nTry /help",
+                parse_mode=None,
+            )
+
     def run(self):
         print("📱 Command Listener started")
         while STATE.get('system.running'):
@@ -281,8 +301,13 @@ class CommandListener(threading.Thread):
                     if not text.startswith('/'):
                         continue
                     print(f"📱 Command: {text}")
-                    self.messenger.send(self._handle(text))
-            except Exception:
-                pass
-            sleep_secs = 5 if STATE.get('signals.confirmation_sent') else 30
+                    threading.Thread(
+                        target=self._process_command,
+                        args=(text,),
+                        daemon=True,
+                        name=f'cmd-{text[1:8]}',
+                    ).start()
+            except Exception as e:
+                print(f"⚠️  Command listener error: {e}")
+            sleep_secs = 1 if STATE.get('signals.confirmation_sent') else 2
             time.sleep(sleep_secs)

@@ -147,6 +147,7 @@ def scheduler(messenger: Messenger):
     last_morning   = -1
     last_daily     = -1
     last_skip      = -1
+    last_readiness = -1
 
     while STATE.get('system.running'):
         try:
@@ -231,6 +232,16 @@ def scheduler(messenger: Messenger):
             from src.safety import update_heartbeat
             if 9 <= hour <= 16:
                 update_heartbeat()
+
+            # Refresh /status readiness line (heavy DB work — not on every command)
+            if minute == 10 and last_readiness != hour:
+                last_readiness = hour
+                try:
+                    from src.brain_metrics import assess_live_readiness
+                    r = assess_live_readiness()
+                    STATE.set('system.live_readiness_summary', r['reason'])
+                except Exception:
+                    pass
 
             if hour == 20 and 13 <= minute <= 23 and last_evening != now.day:
                 last_evening = now.day
@@ -341,6 +352,18 @@ def main():
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")
+
+    def _warm_readiness_cache():
+        time.sleep(5)
+        try:
+            from src.brain_metrics import assess_live_readiness
+            r = assess_live_readiness()
+            STATE.set('system.live_readiness_summary', r['reason'])
+        except Exception:
+            pass
+
+    threading.Thread(target=_warm_readiness_cache, daemon=True).start()
+
     now = datetime.now(IST)
     if now.weekday() < 5 and 9 <= now.hour <= 11:
         msg.send(format_morning_brief())

@@ -12,7 +12,7 @@ BANKNIFTY_GROWW_SYMBOLS = ('NSE-BANKNIFTY', 'NSE_BANKNIFTY')
 
 
 def _get_groww(token: str = ''):
-    from growwapi import GrowwAPI
+    from src.groww_client import get_groww_client
     tok = token or os.getenv('GROWW_ACCESS_TOKEN', '')
     if not tok:
         from core.shared_state import STATE
@@ -20,7 +20,7 @@ def _get_groww(token: str = ''):
     if not tok:
         from agents.data_agent import DataAgent
         tok = DataAgent().get_groww_token()
-    return GrowwAPI(tok), tok
+    return get_groww_client(tok), tok
 
 
 def _interval_const(groww, minutes: int):

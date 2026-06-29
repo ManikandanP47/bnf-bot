@@ -116,8 +116,8 @@ def check_groww_balance(groww_token: str,
             'reason':    'No Groww token — add funds & TOTP credentials for live trading',
         }
     try:
-        from growwapi import GrowwAPI
-        groww = GrowwAPI(groww_token)
+        from src.groww_client import get_groww_client
+        groww = get_groww_client(groww_token)
         margin = groww.get_available_margin_details()
         if isinstance(margin, dict):
             available = float(

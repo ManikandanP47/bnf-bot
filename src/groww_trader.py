@@ -35,7 +35,8 @@ class GrowwTrader:
 
         if GROWW_AVAILABLE and self.token and not self.paper:
             try:
-                self.groww = GrowwAPI(self.token)
+                from src.groww_client import get_groww_client
+                self.groww = get_groww_client(self.token)
                 logger.info("Groww live mode connected")
             except Exception as e:
                 logger.error(f"Groww connect failed: {e}")
