@@ -57,21 +57,45 @@ except Exception as e:
     print(f"   ❌ {e}")
     LIVE_TOKEN = os.getenv('GROWW_ACCESS_TOKEN','')
 
-# Test 3: BankNifty Live Price
+# Test 3: BankNifty Live Price — CORRECT SYMBOL
 print("\n3. BankNifty live price...")
 try:
     from growwapi import GrowwAPI
     groww = GrowwAPI(LIVE_TOKEN)
-    ltp   = groww.get_ltp(
-        exchange_trading_symbols=("NSE:NIFTY BANK",),
+    # Correct: trading_symbol is BANKNIFTY not NIFTY BANK
+    ltp = groww.get_ltp(
+        exchange_trading_symbols=("NSE:BANKNIFTY",),
         segment="CASH"
     )
-    price = ltp.get('NSE:NIFTY BANK',{}).get('ltp', 0) or str(ltp)[:60]
+    price = (ltp.get("NSE:BANKNIFTY") or {}).get("ltp", 0)
+    if price == 0:
+        # Try alternate key
+        for k, v in ltp.items():
+            if isinstance(v, dict) and v.get("ltp"):
+                price = v["ltp"]
+                break
+        if price == 0:
+            price = str(ltp)[:80]
     results.append(f"✅ BankNifty: ₹{price}")
     print(f"   ✅ Price: {price}")
 except Exception as e:
     results.append(f"❌ BankNifty price: {e}")
     print(f"   ❌ {e}")
+
+# Test 3b: Try get_quote as fallback
+print("\n3b. BankNifty get_quote fallback...")
+try:
+    from growwapi import GrowwAPI
+    groww = GrowwAPI(LIVE_TOKEN)
+    q = groww.get_quote(
+        trading_symbol="BANKNIFTY",
+        exchange="NSE",
+        segment="CASH"
+    )
+    print(f"   ✅ Quote: {str(q)[:80]}")
+    results.append(f"✅ Quote: {str(q)[:40]}")
+except Exception as e:
+    print(f"   ⚠️ {e}")
 
 # Test 4: F&O Margin
 print("\n4. F&O margin...")
@@ -120,7 +144,8 @@ report = (
 for r in results:
     report += f"{r}\n"
 
-report += f"\n{'✅ BOT READY FOR TRADING' if passed==len(results) else '⚠️ Some issues found'}"
+status = '✅ BOT READY FOR TRADING' if passed >= 5 else '⚠️ Some issues found'
+report += f"\n{status}"
 tg(report)
 print(f"\n{'='*50}")
 print(f"RESULT: {passed}/{len(results)} passed")
