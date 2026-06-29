@@ -116,6 +116,32 @@ def check_groww_balance(groww_token: str,
             'reason':    'No Groww token — add funds & TOTP credentials for live trading',
         }
     try:
+        from growwapi import GrowwAPI
+        groww = GrowwAPI(groww_token)
+        margin = groww.get_available_margin_details()
+        if isinstance(margin, dict):
+            available = float(
+                margin.get('clear_cash')
+                or margin.get('available_margin')
+                or margin.get('net_available')
+                or 0
+            )
+            has_funds = available >= required_amount
+            return {
+                'available':  True,
+                'balance':    available,
+                'required':   required_amount,
+                'sufficient': has_funds,
+                'reason': (
+                    f"Groww margin ₹{available:,.2f} ✅"
+                    if has_funds else
+                    f"❌ Insufficient margin: ₹{available:,.2f} available, "
+                    f"need ₹{required_amount:,.0f}. Add funds to Groww F&O wallet."
+                ),
+            }
+    except Exception:
+        pass
+    try:
         headers = {
             'Authorization': f'Bearer {groww_token}',
             'Content-Type':  'application/json'
