@@ -111,7 +111,7 @@ modules = [
     'src.groww_client', 'src.groww_historical', 'src.expiry_picker',
     'src.shadow_learning', 'src.virtual_broker', 'src.ml_brain',
     'src.sim_learning_report', 'src.market_simulator', 'src.ops_backup',
-    'agents.groww_feed_agent',
+    'agents.groww_feed_agent', 'src.groww_api_guard', 'src.sim_notify',
 ]
 for mod in modules:
     try:
@@ -135,6 +135,7 @@ try:
         '/help', '/status', '/pnl', '/zone', '/pause', '/resume',
         '/journal', '/readiness', '/funnel', '/context', '/cpr',
         '/flow', '/backtest', '/learn', '/shadow', '/simreport', '/ml', '/groww', '/why',
+        '/resetlearning',
     ]
     for c in cmds:
         try:
@@ -573,6 +574,22 @@ try:
             ok(f"startup has {kw}")
 except Exception as e:
     bad("startup", str(e)[:80])
+
+
+# ─────────────────────────────────────────────────────────────
+section("14. Shadow roundtrip (temp DB)")
+try:
+    import subprocess
+    r = subprocess.run(
+        [sys.executable, os.path.join(ROOT, 'tests', 'test_shadow_roundtrip.py')],
+        capture_output=True, text=True, timeout=30, cwd=ROOT,
+    )
+    if r.returncode == 0:
+        ok("shadow_roundtrip", (r.stdout or '').strip().split('\n')[-1][:60])
+    else:
+        bad("shadow_roundtrip", (r.stderr or r.stdout or '')[:120])
+except Exception as e:
+    bad("shadow_roundtrip", str(e)[:120])
 
 
 # ─────────────────────────────────────────────────────────────

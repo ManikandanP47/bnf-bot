@@ -36,12 +36,16 @@ def _conn():
     return sqlite3.connect(DB_FILE)
 
 
-def _notify(msg: str):
+def _notify(msg: str, kind: str = 'open', pnl_rs: float = 0, outcome: str = ''):
     try:
-        from core.messenger import Messenger
-        Messenger().send(msg)
+        from src.sim_notify import notify_sim_telegram
+        notify_sim_telegram(msg, kind=kind, pnl_rs=pnl_rs, outcome=outcome)
     except Exception:
-        pass
+        try:
+            from core.messenger import Messenger
+            Messenger().send(msg)
+        except Exception:
+            pass
 
 
 def _open_count_today() -> int:
@@ -315,7 +319,8 @@ def open_explore_sim(setup: dict) -> dict:
         f"Score {setup.get('sim_score')} | {setup['bias']} | {setup.get('session')}\n"
         f"📋 {params.get('range_note', '')}\n"
         f"🎯 Target ₹{params['tgt_prem']} | SL ₹{params['sl_prem']}\n"
-        f"_Watching Groww LTP live (~10s) — profit/loss from real premium_"
+        f"_Watching Groww LTP live (~10s) — profit/loss from real premium_",
+        kind='open',
     )
     return {'opened': True, 'id': sid, 'name': params['name']}
 

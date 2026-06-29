@@ -287,6 +287,11 @@ class CommandListener(threading.Thread):
             from src.ml_brain import format_ml_status
             return format_ml_status()
 
+        elif cmd == '/resetlearning':
+            from src.sim_learning_report import reset_graduation_flag, format_reset_learning_help
+            reset_graduation_flag()
+            return format_reset_learning_help()
+
         elif cmd == '/simreport':
             from src.sim_learning_report import (
                 format_daily_sim_training_report, format_graduation_report,

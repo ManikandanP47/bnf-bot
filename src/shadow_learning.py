@@ -255,12 +255,16 @@ def _build_shadow_params(signal: dict) -> dict:
     }
 
 
-def _notify_telegram(msg: str):
+def _notify_telegram(msg: str, kind: str = 'open', pnl_rs: float = 0, outcome: str = ''):
     try:
-        from core.messenger import Messenger
-        Messenger().send(msg)
+        from src.sim_notify import notify_sim_telegram
+        notify_sim_telegram(msg, kind=kind, pnl_rs=pnl_rs, outcome=outcome)
     except Exception:
-        pass
+        try:
+            from core.messenger import Messenger
+            Messenger().send(msg)
+        except Exception:
+            pass
 
 
 def try_open_shadow_trade(signal: dict) -> dict:
@@ -349,7 +353,8 @@ def try_open_shadow_trade(signal: dict) -> dict:
         f"{params['name']} @ ₹{params['premium']}\n"
         f"Score {signal.get('score', 0)} | {bias} | {signal.get('session', '')}\n"
         f"📋 {prediction[:100]}\n"
-        f"_Groww live LTP + buy/sell friction (spread+slip) — WebSocket repriced until exit_"
+        f"_Groww live LTP + buy/sell friction (spread+slip) — WebSocket repriced until exit_",
+        kind='open',
     )
 
     return {'opened': True, 'id': sid, 'name': params['name'], 'rag': rag_notes}
@@ -497,7 +502,7 @@ def tick_shadow_trades():
         if trend_line:
             close_msg += f"{trend_line}\n"
         close_msg += f"🧠 {lesson[:120]}"
-        _notify_telegram(close_msg)
+        _notify_telegram(close_msg, kind='close', pnl_rs=pnl, outcome=outcome)
 
         try:
             from agents.learning_agent import BRAIN

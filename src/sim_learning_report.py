@@ -340,3 +340,31 @@ def maybe_send_graduation(messenger) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def reset_graduation_flag() -> dict:
+    """
+    Clear graduation_sent so the bot can send the graduation report again.
+    Use when re-running or extending the learning phase.
+    """
+    conn = _conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS bot_flags (key TEXT PRIMARY KEY, value TEXT)
+    """)
+    conn.execute("DELETE FROM bot_flags WHERE key='graduation_sent'")
+    conn.commit()
+    conn.close()
+    return {'ok': True, 'message': 'Graduation flag cleared — report will send when phase ends'}
+
+
+def format_reset_learning_help() -> str:
+    from src.sim_notify import format_quiet_mode_line
+    return (
+        "🔄 *Learning phase reset*\n\n"
+        "Cleared `graduation_sent` flag.\n"
+        "• Graduation Telegram will fire again when 14-day phase completes\n"
+        "• Virtual sim data (shadow_trades) is kept — brain keeps its memory\n"
+        "• To fully restart learning from zero, delete `trader_brain.db` on server "
+        "(last resort only)\n\n"
+        f"_{format_quiet_mode_line()}_"
+    )

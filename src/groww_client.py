@@ -26,7 +26,8 @@ def get_groww_client(token: str = ''):
 
     _client = GrowwAPI(tok)
     _cached_token = tok
-    return _client
+    from src.groww_api_guard import GrowwAPIProxy
+    return GrowwAPIProxy(_client)
 
 
 def clear_groww_client():
