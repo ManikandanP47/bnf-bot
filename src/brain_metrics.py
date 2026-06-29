@@ -13,7 +13,8 @@ IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 
 MIN_PAPER_TRADES = int(os.getenv('MIN_PAPER_TRADES', '10'))
-MIN_PAPER_DAYS   = int(os.getenv('MIN_PAPER_DAYS', '10'))
+MIN_PAPER_DAYS   = int(os.getenv('MIN_PAPER_DAYS', '14'))
+LEARNING_PHASE_DAYS = int(os.getenv('LEARNING_PHASE_DAYS', '14'))
 MIN_WIN_RATE     = float(os.getenv('MIN_WIN_RATE', '45'))
 MIN_PROFIT_FACTOR = float(os.getenv('MIN_PROFIT_FACTOR', '1.2'))
 MIN_CONFIDENCE   = int(os.getenv('MIN_PAPER_CONFIDENCE', '60'))
@@ -200,6 +201,19 @@ def assess_live_readiness() -> dict:
                    f"{s['consec_losses']} consecutive (max {MAX_CONSEC_LOSSES - 1})")
     all_ok &= gate('Confidence', conf['score'] >= MIN_CONFIDENCE,
                    f"{conf['score']}/100 (need {MIN_CONFIDENCE}+)")
+
+    try:
+        from src.shadow_learning import learning_phase_info
+        sh = learning_phase_info()
+        if sh['in_learning_phase']:
+            all_ok = False
+            gate('Learning phase', False,
+                 f"{sh['days_left']}d left of {LEARNING_PHASE_DAYS} — shadow drills running")
+        elif sh['shadow_total'] >= 5:
+            gate('Shadow drills', sh['shadow_win_rate'] >= 35,
+                 f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills)")
+    except Exception:
+        pass
 
     from src.trade_analytics import compute_drawdown, compute_r_stats
     from src.capital_guard import LIVE_CAPITAL_RS

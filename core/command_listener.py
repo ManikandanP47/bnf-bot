@@ -250,7 +250,18 @@ class CommandListener(threading.Thread):
 
         elif cmd == '/learn':
             from src.market_rag import format_learn_report
-            return format_learn_report()
+            from src.shadow_learning import format_shadow_brief
+            return format_learn_report() + "\n\n" + format_shadow_brief()
+
+        elif cmd == '/shadow':
+            from src.shadow_learning import format_shadow_daily_section, learning_phase_info
+            info = learning_phase_info()
+            hdr = (
+                f"🎓 *Shadow Learning Status*\n"
+                f"Phase: {'LEARNING' if info['in_learning_phase'] else 'GRADUATED'}\n"
+                f"Days left: {info['days_left']}/{info['phase_days']}\n"
+            )
+            return hdr + format_shadow_daily_section()
 
         elif cmd == '/flow':
             from src.market_flow import refresh_market_flow, format_flow_report
@@ -274,6 +285,7 @@ class CommandListener(threading.Thread):
                 "/cpr — Central Pivot Range (TC/P/BC)\n"
                 "/flow — OI, VIX, EMA, theta, chart lines (also 9:25 AM auto)\n"
                 "/learn — RAG memory (rules + your trades)\n"
+                "/shadow — Virtual drill results today\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"
                 "/pnl     — Today's P&L\n"

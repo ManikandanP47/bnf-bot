@@ -325,6 +325,8 @@ class AnalysisAgent(threading.Thread):
         if know.get('patterns'):
             reasons.append(f"✅ 5M: {', '.join(know['patterns'])}")
 
+        rag_notes = [w for w in know.get('warnings', []) if '📚' in str(w)]
+
         # Publish signal
         STATE.update('signals', {
             'analysis_ready': True,
@@ -343,6 +345,7 @@ class AnalysisAgent(threading.Thread):
                 'struct_15m':  struct_15m,
                 'vol_quality': vol_check['quality'],
                 'reasons':     reasons,
+                'rag_notes':   rag_notes,
                 'time':        now.strftime('%H:%M:%S')
             }
         })
@@ -351,6 +354,16 @@ class AnalysisAgent(threading.Thread):
         log_funnel('setup_seen', {
             'score': score, 'trend': bias, 'session': session,
         })
+
+        # Shadow learning — virtual CE/PE drill (no money, no user confirm)
+        try:
+            from src.shadow_learning import try_open_shadow_trade
+            sh = try_open_shadow_trade(STATE.get('signals.analysis'))
+            if sh.get('opened'):
+                reasons.append(f"🎓 Shadow drill #{sh['id']} opened — tracking prediction")
+                print(f"🎓 Shadow #{sh['id']}: {sh.get('name')}")
+        except Exception as e:
+            STATE.add_error(f"Shadow: {str(e)[:40]}")
 
         self.last_signal_time = now
         print(f"📊 Signal: {bias} score={score} at {price:,.0f} | {now.strftime('%H:%M')}")

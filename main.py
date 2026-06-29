@@ -381,6 +381,7 @@ def main():
         f"/context /cpr /flow — Levels & F&O flow\n"
         f"/backtest /learn — History & brain memory\n"
         f"/help — Full command list\n\n"
+        f"🎓 *Learning:* shadow drills auto on every setup (2-week phase)\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")
@@ -403,7 +404,9 @@ def main():
             from src.market_context import refresh_market_context
             from src.history_backtest import refresh_backtest_summary
             from src.market_rag import init_knowledge_base
+            from src.shadow_learning import init_shadow_tables
             init_knowledge_base()
+            init_shadow_tables()
             tok = DataAgent().get_groww_token()
             refresh_market_context(tok)
             refresh_backtest_summary(tok)

@@ -154,6 +154,18 @@ class RiskAgent(threading.Thread):
             min_score = dyn_score
         max_trades   = brain.get('max_trades_day', 1)
         trades_today = brain.get('trades_today', 0)
+        try:
+            from src.shadow_learning import is_learning_phase, learning_phase_info
+            if is_learning_phase():
+                max_trades = min(max_trades, 1)
+                info = learning_phase_info()
+                if info['days_left'] > 0:
+                    warnings.append(
+                        f"🎓 Learning phase ({info['days_left']}d left) — "
+                        f"max 1 confirmed trade/day; shadow drills active"
+                    )
+        except Exception:
+            pass
         avoid_hours  = brain.get('avoid_hours', [])
         hour         = datetime.now(IST).hour
 
@@ -1154,6 +1166,11 @@ class MonitorAgent(threading.Thread):
                 market_window = dtime(9, 15) <= now <= dtime(15, 20)
                 if market_window or STATE.get('position.open'):
                     self.check_position()
+                try:
+                    from src.shadow_learning import tick_shadow_trades
+                    tick_shadow_trades()
+                except Exception:
+                    pass
             except Exception as e:
                 STATE.add_error(f"Monitor Agent: {str(e)[:60]}")
 

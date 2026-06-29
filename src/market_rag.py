@@ -145,6 +145,39 @@ def retrieve(state: dict, top_k: int = 3) -> list:
     return scored[:top_k]
 
 
+def record_rag_usage(chunks: list):
+    """Increment use counter when knowledge is applied to a trade/shadow."""
+    if not chunks:
+        return
+    init_knowledge_base()
+    conn = _conn()
+    for c in chunks:
+        cid = c.get('id')
+        if cid:
+            conn.execute(
+                "UPDATE knowledge_chunks SET uses = uses + 1 WHERE id=?", (cid,)
+            )
+    conn.commit()
+    conn.close()
+
+
+def get_rag_usage_stats() -> dict:
+    init_knowledge_base()
+    conn = _conn()
+    total_uses = conn.execute(
+        "SELECT COALESCE(SUM(uses), 0) FROM knowledge_chunks"
+    ).fetchone()[0]
+    trade_uses = conn.execute(
+        "SELECT COALESCE(SUM(uses), 0) FROM knowledge_chunks WHERE source='trade'"
+    ).fetchone()[0]
+    top = conn.execute(
+        "SELECT content, uses, outcome FROM knowledge_chunks "
+        "WHERE uses > 0 ORDER BY uses DESC LIMIT 3"
+    ).fetchall()
+    conn.close()
+    return {'total_uses': total_uses, 'trade_uses': trade_uses, 'top': top}
+
+
 def ingest_trade_lesson(
     session: str, bias: str, regime: str,
     mistake: str, lesson: str, outcome: str, cpr_class: str = '',
@@ -189,6 +222,8 @@ def apply_rag_to_signal(signal: dict) -> dict:
     if not chunks:
         return {'ok': True, 'score_delta': 0, 'reasons': [], 'lessons': []}
 
+    record_rag_usage(chunks)
+
     reasons = []
     score_delta = 0
     for c in chunks:
@@ -226,14 +261,25 @@ def format_learn_report() -> str:
     ).fetchall()
     conn.close()
 
+    from src.market_rag import get_rag_usage_stats
+    usage = get_rag_usage_stats()
+
     lines = [
         "🧠 *Market RAG — Bot Memory*",
         "━━━━━━━━━━━━━━━━━━━",
         f"Total chunks: {total} ({seeds} rules + {trades} from your trades)",
+        f"Knowledge *reused* {usage['total_uses']} times on setups",
         "",
-        "*How it works:* retrieves CPR/session rules + your trade lessons",
-        "*Learning:* each paper exit adds to memory automatically",
+        "*How it works:* every setup retrieves matching rules → adjusts score",
+        "*Shadow + paper exits* add new lessons automatically",
         "",
+    ]
+    if usage['top']:
+        lines.append("*Most used rules:*")
+        for content, uses, outcome in usage['top']:
+            lines.append(f"  ↻ {uses}× [{outcome}] {content[:65]}...")
+        lines.append("")
+    lines += [
         "*Recent knowledge:*",
     ]
     for content, outcome, source in recent:

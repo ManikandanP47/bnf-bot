@@ -203,6 +203,12 @@ def format_daily_paper_report() -> str:
         "",
         "_Review each trade above — you learn, brain learns_ 🤝",
     ]
+    try:
+        from src.shadow_learning import format_shadow_daily_section, resolve_shadow_eod
+        resolve_shadow_eod()
+        lines.append(format_shadow_daily_section())
+    except Exception:
+        pass
     return '\n'.join(lines)
 
 
