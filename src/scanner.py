@@ -128,12 +128,8 @@ def check_1h(trend, key_level):
 
 
 def next_expiry():
-    today = datetime.now(IST)
-    for d in range(7, 18):
-        candidate = today + timedelta(days=d)
-        if candidate.weekday() == 3:
-            return candidate.strftime('%d %b %Y')
-    return (today + timedelta(days=10)).strftime('%d %b %Y')
+    from src.expiry_picker import next_banknifty_expiry
+    return next_banknifty_expiry()
 
 
 def strike_and_premium(current, trend):

@@ -134,13 +134,8 @@ def load_state() -> dict:
 
 
 def next_expiry():
-    from datetime import timedelta
-    today = datetime.now(IST)
-    for d in range(7, 18):
-        c = today + timedelta(days=d)
-        if c.weekday() == 3:
-            return c.strftime('%d %b %Y')
-    return (today + timedelta(days=10)).strftime('%d %b %Y')
+    from src.expiry_picker import next_banknifty_expiry
+    return next_banknifty_expiry()
 
 
 def check_exit_signal(df: pd.DataFrame, trade: dict) -> dict:

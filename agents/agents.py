@@ -61,6 +61,22 @@ class RiskAgent(threading.Thread):
             STATE.set('system.paused', True)
             return {'approved': False, 'reason': weekly_cap['reason']}
 
+        zone = STATE.get('zone', {})
+        est_prem = zone.get('premium', 265)
+        est_params = {
+            'premium':  est_prem,
+            'lot_cost': est_prem * 15,
+            'max_loss': round(est_prem * 0.30 * 15, 0),
+            'expiry':   zone.get('expiry', ''),
+            'strike':   zone.get('strike', 0),
+            'opt_type': zone.get('opt_type', 'CE'),
+        }
+        from src.salary_trader_guards import run_salary_trader_guards
+        guard = run_salary_trader_guards(signal, est_params)
+        if not guard.get('ok', True):
+            return {'approved': False, 'reason': guard['reason']}
+        warnings.extend(guard.get('warnings', []))
+
         # ── Event calendar (RBI, Fed, monthly expiry) ─────────────
         from src.trade_filters import is_event_day
         event = is_event_day()
@@ -73,7 +89,6 @@ class RiskAgent(threading.Thread):
         from src.capital_guard import check_trade_cost_vs_capital, LIVE_CAPITAL_RS
         from src.premium_feed import fetch_option_ltp
         from src.strike_picker import find_affordable_strike
-        zone = STATE.get('zone', {})
         premium = zone.get('premium', 265)
         strike  = zone.get('strike', 0)
         opt     = zone.get('opt_type', 'CE')
@@ -126,19 +141,6 @@ class RiskAgent(threading.Thread):
                     'Review and type /resume when ready.'
                 )
             }
-
-        # ── Wednesday expiry filter ───────────────────────────────
-        now     = datetime.now(IST)
-        weekday = now.weekday()  # 2 = Wednesday
-        if weekday == 2:
-            # Wednesday = expiry day. Much stricter.
-            if score < 8:
-                return {
-                    'approved': False,
-                    'reason':   f'📅 Wednesday expiry day — need score ≥ 8 (got {score}). Skipping.'
-                }
-            warnings.append('⚠️ Expiry day — stricter rules applied (score ≥ 8 ✅)')
-
 
         # ── Brain check ───────────────────────────────────────────
         brain        = STATE.get('brain')
@@ -341,6 +343,12 @@ class ExecutionAgent(threading.Thread):
         premium = zone.get('premium', 265)
         strike_note = ''
 
+        from src.expiry_picker import days_to_expiry, next_banknifty_expiry
+        min_exp_days = int(os.getenv('MIN_DAYS_TO_EXPIRY', '5'))
+        if not expiry or days_to_expiry(expiry) < min_exp_days:
+            expiry = next_banknifty_expiry(min_exp_days)
+            strike_note = f'Using {min_exp_days}d+ expiry (theta safety)'
+
         if strike and expiry:
             live_prem = fetch_option_ltp(strike, opt, expiry)
             if live_prem > 0:
@@ -423,6 +431,11 @@ class ExecutionAgent(threading.Thread):
         """Safety, premium sanity, liquidity — all must pass."""
         from src.safety import run_safety_checks
         from src.trade_analytics import check_premium_sanity, check_liquidity
+        from src.salary_trader_guards import run_salary_trader_guards
+
+        guard = run_salary_trader_guards(signal, params)
+        if not guard.get('ok', True):
+            return {'ok': False, 'reason': guard['reason']}
 
         paper = os.getenv('PAPER_MODE', 'true').lower() == 'true'
         token = '' if paper else (

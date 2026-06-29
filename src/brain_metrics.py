@@ -324,9 +324,16 @@ def format_readiness_report() -> str:
 
     lines += [
         "",
+        "*Salary-trader guards (active):*",
+        "  Live Groww price only (no yfinance entries)",
+        "  Cold start: score ≥8 until 5 paper trades",
+        "  No entries after 2 PM (1 PM Wed expiry)",
+        "  Max SL risk 25% of capital per trade",
+        "  Expiry ≥5 days — skips expiry-week theta",
+        "",
         f"*{r['reason']}*",
         "",
-        "_Stay paper until every gate is green_ 🛡️",
+        "_Paper period = your backtest. Stay paper until every gate is green_ 🛡️",
     ]
     return '\n'.join(lines)
 
