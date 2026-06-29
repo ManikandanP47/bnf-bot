@@ -12,6 +12,9 @@ import pytz
 IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 PAPER_SLIPPAGE_PER_UNIT = float(os.getenv('PAPER_SLIPPAGE_PER_UNIT', '7'))
+SIM_LIVE_FILLS = os.getenv('SIM_LIVE_FILLS', 'true').lower() == 'true'
+SIM_SLIPPAGE_PER_UNIT = float(os.getenv('SIM_SLIPPAGE_PER_UNIT', str(PAPER_SLIPPAGE_PER_UNIT)))
+SIM_SPREAD_PCT = float(os.getenv('SIM_SPREAD_PCT', '1.0'))
 MIN_PREMIUM_RS = float(os.getenv('MIN_PREMIUM_RS', '80'))
 MAX_PREMIUM_RS = float(os.getenv('MAX_PREMIUM_RS', '450'))
 MAX_SPREAD_PCT = float(os.getenv('MAX_SPREAD_PCT', '8'))
@@ -191,6 +194,48 @@ def apply_paper_slippage(pnl_rs: float, qty: int = 15) -> tuple:
     """Round-trip slippage on entry+exit for realistic paper P&L."""
     slip = round(PAPER_SLIPPAGE_PER_UNIT * qty * 2, 0)
     return round(pnl_rs - slip, 0), slip
+
+
+def virtual_buy_fill_price(ltp: float) -> dict:
+    """
+    Live-like BUY fill from WebSocket/REST LTP.
+    Market buy pays above LTP: spread + per-unit slippage.
+    """
+    if ltp <= 0:
+        return {'fill': 0.0, 'ltp': 0.0, 'friction': 0.0, 'live_like': False}
+    if not SIM_LIVE_FILLS:
+        return {'fill': round(ltp, 1), 'ltp': ltp, 'friction': 0.0, 'live_like': False}
+    spread = ltp * SIM_SPREAD_PCT / 100
+    friction = spread + SIM_SLIPPAGE_PER_UNIT
+    fill = round(ltp + friction, 1)
+    return {'fill': fill, 'ltp': ltp, 'friction': round(friction, 2), 'live_like': True}
+
+
+def virtual_sell_fill_price(ltp: float) -> dict:
+    """
+    Live-like SELL fill from WebSocket/REST LTP.
+    Market sell receives below LTP: spread + per-unit slippage.
+    """
+    if ltp <= 0:
+        return {'fill': 0.0, 'ltp': 0.0, 'friction': 0.0, 'live_like': False}
+    if not SIM_LIVE_FILLS:
+        return {'fill': round(ltp, 1), 'ltp': ltp, 'friction': 0.0, 'live_like': False}
+    spread = ltp * SIM_SPREAD_PCT / 100
+    friction = spread + SIM_SLIPPAGE_PER_UNIT
+    fill = round(max(ltp - friction, 1.0), 1)
+    return {'fill': fill, 'ltp': ltp, 'friction': round(friction, 2), 'live_like': True}
+
+
+def virtual_live_pnl(entry_fill: float, ltp_now: float, qty: int = 15) -> dict:
+    """P&L using buy-fill at entry and sell-fill at current LTP."""
+    sell = virtual_sell_fill_price(ltp_now)
+    pnl = round((sell['fill'] - entry_fill) * qty, 0) if entry_fill else 0
+    return {
+        'pnl_rs': pnl,
+        'ltp': ltp_now,
+        'sell_fill': sell['fill'],
+        'live_like': sell['live_like'],
+    }
 
 
 def compute_drawdown() -> dict:

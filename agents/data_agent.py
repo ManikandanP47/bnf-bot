@@ -308,6 +308,18 @@ class DataAgent(threading.Thread):
         except Exception:
             pass
 
+    def _active_watch_on_price(self):
+        """On each BNF tick: re-price virtual orders (real uses Monitor + smart MTM)."""
+        try:
+            from src.position_watch import watch_mode_active
+            if not watch_mode_active():
+                return
+            from src.shadow_learning import has_open_virtual_orders, tick_shadow_trades
+            if has_open_virtual_orders():
+                tick_shadow_trades()
+        except Exception:
+            pass
+
     def run(self):
         STATE.set_agent_status('data', 'RUNNING')
         print("📡 Data Agent: 1-min + 5-min + 15-min candles ✅")
@@ -344,6 +356,7 @@ class DataAgent(threading.Thread):
                     self._publish(result['price'],
                                   result.get('volume', 1000),
                                   result.get('source', 'UNKNOWN'))
+                    self._active_watch_on_price()
                     self._ctx_tick += 1
                     if self._ctx_tick % 6 == 1 and should_fetch('market_context'):
                         try:
@@ -358,7 +371,12 @@ class DataAgent(threading.Thread):
                                 mark_fetched('market_flow')
                         except Exception:
                             pass
-                    time.sleep(10)
+                    from src.position_watch import bnf_poll_interval_sec
+                    from src.groww_feed_store import is_feed_live
+                    if is_feed_live():
+                        time.sleep(int(os.getenv('BNF_POLL_FEED_IDLE_SEC', '20')))
+                    else:
+                        time.sleep(bnf_poll_interval_sec())
                 else:
                     STATE.set('market.connected', False)
                     time.sleep(30)

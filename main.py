@@ -24,7 +24,8 @@ from core.messenger         import Messenger
 from core.command_listener  import CommandListener
 from agents.data_agent      import DataAgent
 from agents.analysis_agent  import AnalysisAgent
-from agents.agents          import RiskAgent, ExecutionAgent, MonitorAgent
+from agents.agents          import RiskAgent, ExecutionAgent, MonitorAgent, SimLearningAgent
+from agents.groww_feed_agent import GrowwFeedAgent
 from agents.learning_agent  import LearningAgent, BRAIN
 
 # All safety modules
@@ -167,6 +168,7 @@ def scheduler(messenger: Messenger):
     last_morning   = -1
     last_morning_flow = -1
     last_daily     = -1
+    last_sim_daily = -1
     last_skip      = -1
     last_readiness = -1
     last_pulse_hour = -1
@@ -242,10 +244,22 @@ def scheduler(messenger: Messenger):
                     messenger.send(cb['reason'])
                     STATE.set('system.market_open', False)
 
-            # 3:35 PM — daily paper journal (profit/loss + brain learning)
+            # 3:35 PM — daily paper journal
             if hour == 15 and 34 <= minute <= 38 and last_daily != now.day:
                 last_daily = now.day
                 messenger.send(format_daily_paper_report())
+
+            # 3:36 PM — daily market training digest (virtual sims on live data)
+            if hour == 15 and 35 <= minute <= 39 and last_sim_daily != now.day:
+                last_sim_daily = now.day
+                try:
+                    from src.sim_learning_report import (
+                        format_daily_sim_training_report, maybe_send_graduation,
+                    )
+                    messenger.send(format_daily_sim_training_report())
+                    maybe_send_graduation(messenger)
+                except Exception as e:
+                    STATE.add_error(f"Sim report: {str(e)[:40]}")
 
             if hour == 15 and 38 <= minute <= 42 and last_skip != now.day:
                 last_skip = now.day
@@ -399,41 +413,21 @@ def main():
     print("\n🚀 Starting agents...")
     agents = [
         DataAgent(),
+        GrowwFeedAgent(),
         AnalysisAgent(),
         RiskAgent(msg),
         ExecutionAgent(msg),
         MonitorAgent(msg),
         LearningAgent(msg),
+        SimLearningAgent(),
         CommandListener(msg),
     ]
     for agent in agents:
         agent.start()
         print(f"  ✅ {agent.name}")
         time.sleep(0.5)
-    msg.send(
-        f"🚀 *Multi-Agent Bot Started*\n\n"
-        f"Mode: {'📝 Paper (confirm each trade)' if paper else '💸 Live'}\n"
-        f"Agents: All 7 running ✅\n"
-        f"Pre-market: 9:00 AM IST\n"
-        f"Morning flow: 9:25 AM IST (auto /flow)\n"
-        f"Evening scan: 8:15 PM IST\n\n"
-        f"✑ *Your Commands*\n"
-        f"/pause /resume /stop — Control bot\n"
-        f"/execute /skip — Confirm or skip trade\n"
-        f"/status /pnl /zone — Health & P&L\n"
-        f"/journal /readiness /funnel — Paper & gates\n"
-        f"/context /cpr /flow /today — Levels, F&O, AI dashboard\n"
-        f"/shadow /learn /backtest — Drills, RAG memory, history\n"
-        f"/help — Full command list\n\n"
-        f"🎓 Shadow drills + auto paper in learning phase (14d)\n"
-        f"🧠 Brain/RAG learn from every shadow & paper close\n"
-        f"💾 Daily backup 3:40 PM | 🚨 Uptime alert if bot goes silent\n"
-        f"📊 Nifty correlation filter + shadow WR auto-tunes min score\n"
-        f"🎯 WR filters: flow≥4, VWAP, OI walls, ADX, max pain, sweet premium\n"
-        f"🔌 /groww /why — API health & why no trade\n"
-        f"🤖 AI coach on /today, journal, weekly funnel & trade cards\n"
-        f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
-    )
+    from src.telegram_help import format_startup_message
+    msg.send(format_startup_message(paper))
     print("\n✅ All agents running")
 
     def _warm_readiness_cache():
@@ -455,8 +449,10 @@ def main():
             from src.history_backtest import refresh_backtest_summary
             from src.market_rag import init_knowledge_base
             from src.shadow_learning import init_shadow_tables
+            from src.virtual_broker import init_virtual_broker_tables
             init_knowledge_base()
             init_shadow_tables()
+            init_virtual_broker_tables()
             tok = STATE.get('system.groww_token', '') or fetch_groww_token()
             if tok:
                 refresh_market_context(tok)

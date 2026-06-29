@@ -283,16 +283,32 @@ class CommandListener(threading.Thread):
             tune_line = f"\n\n{tune['reason']}" if tune.get('reason') else ''
             return format_learn_report() + "\n\n" + format_shadow_brief() + tune_line
 
+        elif cmd == '/ml':
+            from src.ml_brain import format_ml_status
+            return format_ml_status()
+
+        elif cmd == '/simreport':
+            from src.sim_learning_report import (
+                format_daily_sim_training_report, format_graduation_report,
+            )
+            from src.shadow_learning import learning_phase_info
+            info = learning_phase_info()
+            if info['in_learning_phase']:
+                return format_daily_sim_training_report()
+            return format_graduation_report()
+
         elif cmd == '/shadow':
             from src.shadow_learning import (
                 format_shadow_daily_section, learning_phase_info, format_auto_learning_status,
             )
+            from src.market_simulator import format_sim_status
             info = learning_phase_info()
             hdr = (
-                f"🎓 *Shadow Learning Status*\n"
+                f"🎓 *Market Simulation*\n"
                 f"Phase: {'LEARNING' if info['in_learning_phase'] else 'GRADUATED'}\n"
                 f"Days left: {info['days_left']}/{info['phase_days']}\n\n"
                 f"{format_auto_learning_status()}\n"
+                f"{format_sim_status()}\n"
             )
             return hdr + format_shadow_daily_section()
 
@@ -307,32 +323,8 @@ class CommandListener(threading.Thread):
             return format_flow_report()
 
         elif cmd == '/help':
-            return (
-                "🤖 *BNF Bot Commands*\n"
-                "━━━━━━━━━━━━━━━━━\n"
-                "/pause   — Stop entries today\n"
-                "/resume  — Resume trading\n"
-                "/execute — Confirm pending trade\n"
-                "/skip    — Skip pending trade\n"
-                "/journal — Today's paper trades + brain\n"
-                "/readiness — Live gate checklist (8 gates)\n"
-                "/funnel — Signal funnel + skip learning\n"
-                "/context — PDH/PDL, theta, pivots\n"
-                "/backtest — History proxy backtest\n"
-                "/cpr — Central Pivot Range (TC/P/BC)\n"
-                "/flow — OI, VIX, EMA, theta, chart lines (also 9:25 AM auto)\n"
-                "/today — Full day dashboard + AI coach\n"
-                "/groww — Groww API health + throttle status\n"
-                "/why   — Why last setup was blocked\n"
-                "/learn — RAG memory (rules + your trades)\n"
-                "/shadow — Virtual drill results today\n"
-                "/stop    — Emergency stop\n"
-                "/status  — All agents + position\n"
-                "/pnl     — Today's P&L\n"
-                "/zone    — Tonight's zone\n"
-                "/help    — This message\n\n"
-                "_Paper first — all gates green before live ₹5k_ 🛡️"
-            )
+            from src.telegram_help import format_full_help
+            return format_full_help()
 
         return f"❓ Unknown: `{cmd}`\nType /help for commands."
 

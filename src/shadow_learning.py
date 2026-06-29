@@ -19,11 +19,59 @@ IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 LEARNING_PHASE_DAYS = int(os.getenv('LEARNING_PHASE_DAYS', '14'))
 SHADOW_MAX_PER_DAY = int(os.getenv('SHADOW_MAX_PER_DAY', '5'))
+SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
 SHADOW_ENABLED = os.getenv('SHADOW_LEARNING', 'true').lower() == 'true'
+VIRTUAL_TICK_SEC = int(os.getenv('VIRTUAL_TICK_SEC', '10'))
+VIRTUAL_TICK_IDLE_SEC = int(os.getenv('VIRTUAL_TICK_IDLE_SEC', '30'))
+
+_last_virtual_tick = 0.0
+
+
+def has_open_virtual_orders() -> bool:
+    """Any virtual order open today — use faster live monitoring."""
+    init_shadow_tables()
+    today = datetime.now(IST).strftime('%Y-%m-%d')
+    conn = _conn()
+    n = conn.execute(
+        "SELECT COUNT(*) FROM shadow_trades WHERE date=? AND status='OPEN'", (today,)
+    ).fetchone()[0]
+    conn.close()
+    return n > 0
+
+
+def get_open_virtual_positions() -> list:
+    """Open virtual orders for feed subscription."""
+    init_shadow_tables()
+    today = datetime.now(IST).strftime('%Y-%m-%d')
+    conn = _conn()
+    rows = conn.execute("""
+        SELECT strike, opt_type, expiry FROM shadow_trades
+        WHERE date=? AND status='OPEN' AND strike > 0 AND expiry != ''
+    """, (today,)).fetchall()
+    conn.close()
+    keys = ['strike', 'opt_type', 'expiry']
+    return [dict(zip(keys, r)) for r in rows]
 
 
 def _conn():
     return sqlite3.connect(DB_FILE)
+
+
+def _migrate_shadow_columns(conn):
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(shadow_trades)").fetchall()}
+    for name, typ in [
+        ('sim_source', 'TEXT'),
+        ('sim_score', 'INTEGER'),
+        ('range_note', 'TEXT'),
+        ('entry_reasons', 'TEXT'),
+        ('mae_prem', 'REAL'),
+        ('mfe_prem', 'REAL'),
+        ('peak_pnl_rs', 'REAL'),
+        ('entry_flow_score', 'INTEGER'),
+        ('prem_source', 'TEXT'),
+    ]:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE shadow_trades ADD COLUMN {name} {typ}")
 
 
 def init_shadow_tables():
@@ -57,6 +105,7 @@ def init_shadow_tables():
             status       TEXT DEFAULT 'OPEN'
         )
     """)
+    _migrate_shadow_columns(conn)
     conn.commit()
     conn.close()
 
@@ -98,12 +147,13 @@ def format_auto_learning_status() -> str:
     """One-liner for /status and startup — what runs automatically."""
     info = learning_phase_info()
     if info['in_learning_phase']:
+        from src.market_simulator import SIM_MAX_PER_DAY, SIM_MIN_SCORE
         return (
             f"🎓 *Auto-learning ON* ({info['days_left']}d left)\n"
-            f"  • Market scanned every 15s (9:15–3:30)\n"
-            f"  • Shadow drills auto on every setup (max {SHADOW_MAX_PER_DAY}/day)\n"
-            f"  • Paper entries auto when filters pass (max 1/day)\n"
-            f"  • Brain + RAG update on every shadow/paper close"
+            f"  • Market sim every ~4m — virtual CE/PE on live flow (max {SIM_MAX_PER_DAY}/day)\n"
+            f"  • Sim min score {SIM_MIN_SCORE} — relaxed vs Execute filters\n"
+            f"  • Tracks premium path in memory — no Groww orders\n"
+            f"  • Brain + RAG learn from every sim close"
         )
     return (
         "🎯 *Graduated mode* — shadow drills on; paper needs /execute\n"
@@ -176,15 +226,25 @@ def _build_shadow_params(signal: dict) -> dict:
     name = zone.get('option_name', '') or f"BNF {strike} {opt}"
 
     if strike and expiry:
-        from src.premium_feed import fetch_option_ltp
-        live = fetch_option_ltp(strike, opt, expiry)
-        if live > 0:
-            prem = live
+        from src.premium_feed import virtual_buy_fill, VIRTUAL_REQUIRE_GROWW
+        fill = virtual_buy_fill(strike, opt, expiry)
+        if fill.get('ok'):
+            prem = fill['premium']
+            prem_source = fill['prem_source']
+        elif VIRTUAL_REQUIRE_GROWW:
+            return {
+                'name': name, 'premium': 0, 'prem_source': 'UNAVAILABLE',
+            }
+        else:
+            prem_source = 'DELTA_MODEL'
+    else:
+        prem_source = 'DELTA_MODEL'
 
     dyn = get_dynamic_sl_target(prem)
     return {
         'name': name,
         'premium': prem,
+        'prem_source': prem_source,
         'lot_cost': prem * 15,
         'sl_prem': dyn.get('sl_prem', round(prem * 0.7)),
         'tgt_prem': dyn.get('tgt_prem', round(prem * 2)),
@@ -215,20 +275,22 @@ def try_open_shadow_trade(signal: dict) -> dict:
     if STATE.get('position.open'):
         return {'opened': False, 'reason': 'real position open'}
 
-    if _shadow_count_today() >= SHADOW_MAX_PER_DAY:
-        return {'opened': False, 'reason': f'max {SHADOW_MAX_PER_DAY}/day'}
+    from src.market_simulator import SIM_MAX_PER_DAY
+    cap = max(SHADOW_MAX_PER_DAY, SIM_MAX_PER_DAY)
+    if _shadow_count_today() >= cap:
+        return {'opened': False, 'reason': f'max {cap}/day'}
 
     init_shadow_tables()
     today = datetime.now(IST).strftime('%Y-%m-%d')
     conn = _conn()
-    open_row = conn.execute(
-        "SELECT id FROM shadow_trades WHERE date=? AND status='OPEN'", (today,)
-    ).fetchone()
-    if open_row:
+    open_n = conn.execute(
+        "SELECT COUNT(*) FROM shadow_trades WHERE date=? AND status='OPEN'", (today,)
+    ).fetchone()[0]
+    if open_n >= SIM_MAX_OPEN:
         conn.close()
-        return {'opened': False, 'reason': 'shadow already open'}
+        return {'opened': False, 'reason': f'max {SIM_MAX_OPEN} open'}
 
-  # Don't duplicate if user already executing same setup
+    # Don't duplicate if user already executing same setup
     if STATE.get('signals.awaiting_confirmation') or STATE.get('position.open'):
         conn.close()
         return {'opened': False, 'reason': 'awaiting user trade'}
@@ -252,13 +314,15 @@ def try_open_shadow_trade(signal: dict) -> dict:
         f"premium ₹{params['premium']} toward target ₹{params['tgt_prem']}"
     )
 
+    flow = STATE.get('market.flow') or {}
     now = datetime.now(IST)
     conn.execute("""
         INSERT INTO shadow_trades (
             date, entry_time, option_name, bias, session, score, regime,
             bnf_entry, strike, opt_type, expiry, entry_prem, sl_prem, tgt_prem,
-            prediction, rag_notes, status
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            prediction, rag_notes, status, sim_source, mae_prem, mfe_prem,
+            peak_pnl_rs, entry_flow_score, prem_source
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         today, now.strftime('%H:%M'),
         params['name'], bias, signal.get('session', ''),
@@ -266,34 +330,51 @@ def try_open_shadow_trade(signal: dict) -> dict:
         signal.get('price', 0), params.get('strike', 0),
         params.get('opt_type', 'CE'), params.get('expiry', ''),
         params['premium'], params['sl_prem'], params['tgt_prem'],
-        prediction, rag_notes, 'OPEN',
+        prediction, rag_notes, 'OPEN', 'SETUP',
+        params['premium'], params['premium'], 0.0,
+        flow.get('flow_score', 0), params.get('prem_source', 'DELTA_MODEL'),
     ))
     conn.commit()
     sid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
 
+    try:
+        from src.virtual_broker import record_sim_entry
+        record_sim_entry(sid, bias, params['premium'], params)
+    except Exception:
+        pass
+
     _notify_telegram(
-        f"🎓 *Shadow drill #{sid} opened*\n"
+        f"🎓 *Virtual order #{sid}* — Groww LTP fill (no real buy)\n"
         f"{params['name']} @ ₹{params['premium']}\n"
         f"Score {signal.get('score', 0)} | {bias} | {signal.get('session', '')}\n"
         f"📋 {prediction[:100]}\n"
-        f"_Virtual trade — tracking until target/SL/EOD_"
+        f"_Groww live LTP + buy/sell friction (spread+slip) — WebSocket repriced until exit_"
     )
 
     return {'opened': True, 'id': sid, 'name': params['name'], 'rag': rag_notes}
 
 
 def tick_shadow_trades():
-    """Update open shadow trades — SL / target / track premium."""
+    """Update open virtual orders — Groww LTP on live tick (default every 10s)."""
+    global _last_virtual_tick
+    import time as _time
+
+    gap = VIRTUAL_TICK_SEC if has_open_virtual_orders() else VIRTUAL_TICK_IDLE_SEC
+    if _time.time() - _last_virtual_tick < max(5, gap - 1):
+        return
+    _last_virtual_tick = _time.time()
+
     from core.shared_state import STATE
-    from src.premium_feed import get_position_premium, estimate_premium
 
     init_shadow_tables()
     today = datetime.now(IST).strftime('%Y-%m-%d')
     conn = _conn()
     rows = conn.execute("""
         SELECT id, bnf_entry, entry_prem, sl_prem, tgt_prem, strike, opt_type,
-               expiry, bias, option_name, score, session, regime, prediction
+               expiry, bias, option_name, score, session, regime, prediction,
+               sim_source, mae_prem, mfe_prem, peak_pnl_rs, entry_flow_score,
+               entry_time
         FROM shadow_trades WHERE date=? AND status='OPEN'
     """, (today,)).fetchall()
     if not rows:
@@ -306,31 +387,65 @@ def tick_shadow_trades():
         return
 
     now = datetime.now(IST)
+    flow = STATE.get('market.flow') or {}
+    cur_flow = flow.get('flow_score', 0)
+
     for row in rows:
         (sid, bnf_e, entry_p, sl_p, tgt_p, strike, otype, expiry,
-         bias, name, score, session, regime, prediction) = row
+         bias, name, score, session, regime, prediction,
+         sim_source, mae_p, mfe_p, peak_pnl, entry_flow, entry_time) = row
 
         pos = {
             'entry_price': entry_p, 'bnf_at_entry': bnf_e,
             'strike': strike, 'opt_type': otype, 'expiry': expiry,
+            'sl_prem': sl_p, 'tgt_prem': tgt_p,
         }
-        est = get_position_premium(pos, price)
-        if est <= 0:
-            est = estimate_premium(entry_p, bnf_e, price, strike, otype)
+        from src.position_watch import smart_mark_to_market
+        mtm = smart_mark_to_market(pos, price)
+        est = mtm['premium']
+        from src.trade_analytics import virtual_sell_fill_price, virtual_live_pnl, SIM_LIVE_FILLS
+        sell = virtual_sell_fill_price(est)
+        sell_fill = sell['fill']
+        live = virtual_live_pnl(entry_p, est)
+        pnl = live['pnl_rs'] if SIM_LIVE_FILLS else mtm['pnl_rs']
+        prem_src = mtm.get('prem_source', '')
+
+        if not mtm.get('is_real') and est <= 0:
+            continue
+        new_mae = min(mae_p or entry_p, est)
+        new_mfe = max(mfe_p or entry_p, est)
+        new_peak = max(peak_pnl or 0, pnl)
+
+        trail_sl = sl_p
+        if est >= entry_p * 1.35:
+            trail_sl = max(sl_p, round(entry_p * 1.05, 1))
 
         exit_now, reason, outcome = False, '', ''
-        pnl = round((est - entry_p) * 15, 0)
 
-        if est >= tgt_p:
-            exit_now, reason, outcome = True, f'🎯 Shadow target ₹{tgt_p:.0f}', 'WIN'
-        elif est <= sl_p:
-            exit_now, reason, outcome = True, f'🛑 Shadow SL ₹{sl_p:.0f}', 'LOSS'
+        check_prem = sell_fill if SIM_LIVE_FILLS else est
+        if check_prem >= tgt_p:
+            exit_now, reason, outcome = True, f'🎯 Target ₹{tgt_p:.0f}', 'WIN'
+        elif check_prem <= trail_sl:
+            tag = 'trail' if trail_sl > sl_p else 'SL'
+            exit_now, reason, outcome = True, f'🛑 {tag} @ ₹{sell_fill:.0f}', 'LOSS'
+        elif (entry_flow or 0) >= 3 and cur_flow <= (entry_flow - 2) and pnl < 0:
+            exit_now, reason, outcome = True, f'📉 Flow faded ({entry_flow}→{cur_flow})', 'LOSS'
         elif now.time() >= dtime(15, 10):
             exit_now = True
             outcome = 'WIN' if pnl >= 0 else 'LOSS'
-            reason = f'⏰ Shadow EOD @ ₹{est:.0f}'
+            reason = f'⏰ EOD @ ₹{est:.0f}'
 
         if not exit_now:
+            try:
+                from src.virtual_broker import record_sim_tick, maybe_record_mid_snapshot
+                record_sim_tick(sid, price, est, entry_p, cur_flow, prem_src)
+                maybe_record_mid_snapshot(sid, bias or '', price, est, entry_p)
+            except Exception:
+                pass
+            conn.execute("""
+                UPDATE shadow_trades SET mae_prem=?, mfe_prem=?, peak_pnl_rs=?
+                WHERE id=?
+            """, (new_mae, new_mfe, new_peak, sid))
             continue
 
         lesson = _build_shadow_lesson(
@@ -339,27 +454,67 @@ def tick_shadow_trades():
         conn.execute("""
             UPDATE shadow_trades SET
                 exit_time=?, bnf_exit=?, exit_prem=?, pnl_rs=?, outcome=?,
-                exit_reason=?, lesson=?, status='CLOSED'
+                exit_reason=?, lesson=?, status='CLOSED',
+                mae_prem=?, mfe_prem=?, peak_pnl_rs=?
             WHERE id=?
         """, (
-            now.strftime('%H:%M'), price, est, pnl, outcome, reason, lesson, sid,
+            now.strftime('%H:%M'), price, sell_fill if SIM_LIVE_FILLS else est, pnl, outcome, reason, lesson,
+            new_mae, new_mfe, new_peak, sid,
         ))
 
+        try:
+            from src.virtual_broker import record_sim_exit, format_sim_chart_brief, format_trend_evolution_brief
+            from src.position_watch import clear_anchor
+            from src.premium_feed import _option_symbol
+            record_sim_exit(sid, bias or '', est, outcome, pnl)
+            if strike and expiry:
+                clear_anchor(_option_symbol(strike, otype, expiry))
+            chart_line = format_sim_chart_brief(sid)
+            trend_line = format_trend_evolution_brief(sid)
+        except Exception:
+            chart_line = ''
+            trend_line = ''
+
+        src = sim_source or 'SETUP'
+        hold_m = 0
+        if entry_time:
+            try:
+                et = datetime.strptime(entry_time, '%H:%M')
+                hold_m = max(0, int((now.replace(tzinfo=None) -
+                                     et.replace(year=now.year, month=now.month, day=now.day)
+                                     ).total_seconds() / 60))
+            except ValueError:
+                pass
         emoji = '🟢' if outcome == 'WIN' else '🔴'
-        _notify_telegram(
-            f"{emoji} *Shadow #{sid} closed* — {outcome}\n"
-            f"P&L: ₹{pnl:,} | {reason}\n"
-            f"🧠 {lesson[:120]}"
+        close_msg = (
+            f"{emoji} *Virtual order #{sid} closed* ({src}) — {outcome}\n"
+            f"{name} | Groww LTP P&L: ₹{pnl:,} | peak ₹{new_peak:,}\n"
+            f"₹{entry_p:.0f} → ₹{est:.0f} ({prem_src}) | held {hold_m}m\n"
+            f"{reason}\n"
         )
+        if chart_line:
+            close_msg += f"{chart_line}\n"
+        if trend_line:
+            close_msg += f"{trend_line}\n"
+        close_msg += f"🧠 {lesson[:120]}"
+        _notify_telegram(close_msg)
 
         from src.market_rag import ingest_trade_lesson
-        from src.market_context import build_market_context
         ctx = STATE.get('market.context') or {}
         ingest_trade_lesson(
             session=session or '', bias=bias or '', regime=regime or '',
             mistake='SHADOW_' + outcome, lesson=lesson, outcome=outcome,
             cpr_class=(ctx.get('cpr') or {}).get('width_class', ''),
         )
+        try:
+            from agents.learning_agent import BRAIN
+            BRAIN.record_shadow_patterns(
+                session=session or '', score=score or 0, regime=regime or '',
+                rsi=STATE.get('market.rsi_5m', 50), outcome=outcome, pnl_rs=pnl,
+                sim_source=src,
+            )
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
@@ -397,13 +552,16 @@ def get_today_shadow_trades() -> list:
     rows = conn.execute("""
         SELECT id, entry_time, exit_time, option_name, bias, session, score,
                entry_prem, exit_prem, pnl_rs, outcome, exit_reason, lesson,
-               prediction, rag_notes, status
+               prediction, rag_notes, status, sim_source, sim_score,
+               range_note, peak_pnl_rs, entry_reasons, prem_source
         FROM shadow_trades WHERE date=? ORDER BY id
     """, (today,)).fetchall()
     conn.close()
     keys = ['id', 'entry_time', 'exit_time', 'option_name', 'bias', 'session',
             'score', 'entry_prem', 'exit_prem', 'pnl_rs', 'outcome',
-            'exit_reason', 'lesson', 'prediction', 'rag_notes', 'status']
+            'exit_reason', 'lesson', 'prediction', 'rag_notes', 'status',
+            'sim_source', 'sim_score', 'range_note', 'peak_pnl_rs', 'entry_reasons',
+            'prem_source']
     return [dict(zip(keys, r)) for r in rows]
 
 
@@ -413,14 +571,14 @@ def format_shadow_daily_section() -> str:
     info = learning_phase_info()
     lines = [
         "",
-        "🎓 *Shadow Learning* (virtual — no money)",
+        "🎓 *Market Simulation* (memory only — no Groww)",
         f"━━━━━━━━━━━━━━━━━━━",
         f"Phase: {'🟡 LEARNING' if info['in_learning_phase'] else '🟢 GRADUATED'} "
         f"({info['days_left']}d left of {info['phase_days']})",
         f"All-time shadow: {info['shadow_total']} drills | {info['shadow_win_rate']}% win",
     ]
     if not trades:
-        lines.append("\n📭 No shadow drills today — no setup passed analysis.")
+        lines.append("\n📭 No sim drills today — bot still scanning live flow.")
         return '\n'.join(lines)
 
     wins = [t for t in trades if t.get('outcome') == 'WIN']
@@ -429,22 +587,23 @@ def format_shadow_daily_section() -> str:
     lines.append(f"\nToday: {len(wins)} win | {len(losses)} loss | {len(open_t)} open")
 
     for t in trades:
+        src = t.get('sim_source') or 'SETUP'
         if t['status'] == 'OPEN':
             lines += [
                 "",
-                f"⏳ *Shadow #{t['id']}* {t['option_name']} (open)",
-                f"  {t['entry_time']} @ ₹{t['entry_prem']} | score {t['score']}",
-                f"  🧠 Used: {t.get('rag_notes') or '—'}",
+                f"⏳ *Sim #{t['id']}* ({src}) {t['option_name']}",
+                f"  {t['entry_time']} @ ₹{t['entry_prem']} | score {t.get('sim_score') or t['score']}",
+                f"  📍 {t.get('range_note') or '—'}",
             ]
             continue
         e = '🟢' if t['outcome'] == 'WIN' else '🔴'
         lines += [
             "",
-            f"{e} *Shadow #{t['id']}* {t['option_name']}",
+            f"{e} *Sim #{t['id']}* ({src}) {t['option_name']}",
             f"  {t['entry_time']}→{t['exit_time']} | ₹{t['entry_prem']}→{t['exit_prem']}",
-            f"  P&L: ₹{t['pnl_rs']:,.0f} | {t['exit_reason']}",
-            f"  📋 Predicted: {t.get('prediction', '')[:80]}",
-            f"  🧠 Learned: {t.get('lesson', '—')[:100]}",
+            f"  P&L: ₹{t['pnl_rs']:,.0f} | peak ₹{t.get('peak_pnl_rs') or 0:,.0f}",
+            f"  {t['exit_reason']}",
+            f"  🧠 {t.get('lesson', '—')[:100]}",
         ]
 
     lines.append(

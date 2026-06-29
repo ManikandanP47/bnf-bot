@@ -9,6 +9,7 @@
 !heartbeat.json
 *.log
 backups/
+models/
 .groww_token_cache.json
 .groww_rate_limit.json
 __pycache__/

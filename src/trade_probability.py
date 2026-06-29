@@ -5,8 +5,7 @@ import os
 
 def estimate_win_probability(signal: dict) -> dict:
     """
-    Bayesian-style blend of pattern keys for this setup.
-    Returns {prob_pct, label, detail}.
+    Blend: ML model (when trained) + pattern_memory + shadow stats.
     """
     from agents.learning_agent import BRAIN
 
@@ -59,6 +58,19 @@ def estimate_win_probability(signal: dict) -> dict:
         prob = 45 + min(score, 10) * 2
         details.append('prior: score-based')
 
+    # ML blend when model is trained on enough real outcomes
+    ml_weight = 0.0
+    try:
+        from src.ml_brain import predict_win_probability
+        ml = predict_win_probability(signal)
+        if ml.get('ready'):
+            ml_prob = ml['prob_pct']
+            ml_weight = min(0.55, 0.25 + ml.get('samples', 0) / 200)
+            prob = prob * (1 - ml_weight) + ml_prob * ml_weight
+            details.append(f"ML: {ml_prob}% (w={ml_weight:.0%})")
+    except Exception:
+        pass
+
     prob = max(20, min(85, round(prob, 1)))
 
     if prob >= 58:
@@ -71,7 +83,8 @@ def estimate_win_probability(signal: dict) -> dict:
     return {
         'prob_pct': prob,
         'label': label,
-        'detail': '; '.join(details[:3]),
+        'detail': '; '.join(details[:4]),
+        'ml_blend': ml_weight > 0,
     }
 
 

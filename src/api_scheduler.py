@@ -9,7 +9,7 @@ import time
 TTL = {
     'groww_ltp':        10,
     'groww_historical': 300,
-    'groww_option_ltp': 30,
+    'groww_option_ltp': 10,
     'nse_oi':           300,
     'vix':              300,
     'market_context':   600,

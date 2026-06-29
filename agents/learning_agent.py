@@ -234,6 +234,11 @@ class TraderBrain:
             )
         except Exception:
             pass
+        try:
+            from src.ml_brain import maybe_retrain
+            maybe_retrain()
+        except Exception:
+            pass
         return {'outcome': outcome, 'lesson': lesson, 'mistake': mistake, 'pnl_rs': pnl_rs}
 
     def _update_daily_pnl(self, date_str: str, outcome: str, pnl_rs: float):
@@ -338,6 +343,43 @@ class TraderBrain:
                         last_seen = ?
                 """, (k, is_win, 1-is_win, pnl_rs, now,
                       is_win, 1-is_win, pnl_rs, now))
+
+    def record_shadow_patterns(self, session: str, score: int, regime: str,
+                               rsi: float, outcome: str, pnl_rs: float,
+                               sim_source: str = 'EXPLORE'):
+        """Learn from virtual sim closes — feeds pattern_memory like real trades."""
+        now = datetime.now(IST)
+        hour = now.hour
+        day = now.strftime('%A')
+        rsi_zone = 'RSI_HIGH' if rsi > 60 else ('RSI_LOW' if rsi < 40 else 'RSI_MID')
+        is_win = 1 if outcome == 'WIN' else 0
+        today = now.strftime('%Y-%m-%d')
+
+        keys = [
+            f"shadow:session:{session}",
+            f"shadow:hour:{hour}",
+            f"shadow:score:{score}",
+            f"shadow:regime:{regime}",
+            f"shadow:rsi:{rsi_zone}",
+            f"shadow:source:{sim_source}",
+            f"shadow:hour:{hour}|session:{session}",
+            f"shadow:score:{score}|regime:{regime}",
+        ]
+
+        with self._lock:
+            for k in keys:
+                self.conn.execute("""
+                    INSERT INTO pattern_memory
+                    (pattern_key,wins,losses,total_pnl,samples,last_seen)
+                    VALUES (?,?,?,?,1,?)
+                    ON CONFLICT(pattern_key) DO UPDATE SET
+                        wins      = wins + ?,
+                        losses    = losses + ?,
+                        total_pnl = total_pnl + ?,
+                        samples   = samples + 1,
+                        last_seen = ?
+                """, (k, is_win, 1-is_win, pnl_rs, today,
+                      is_win, 1-is_win, pnl_rs, today))
 
     def get_pattern_wr(self, key: str, min_samples: int = 5):
         """Win rate for a pattern (None if < min_samples)"""

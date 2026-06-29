@@ -1030,6 +1030,7 @@ class MonitorAgent(threading.Thread):
 
         from src.premium_feed import get_position_premium
         est_prem = get_position_premium(position, current)
+        # get_position_premium → smart_mark_to_market when watch mode active
 
         # Update peak
         new_peak = max(peak, est_prem)
@@ -1306,6 +1307,39 @@ class MonitorAgent(threading.Thread):
             except Exception as e:
                 STATE.add_error(f"Monitor Agent: {str(e)[:60]}")
 
-            time.sleep(30)  # Every 30 seconds
+            try:
+                from src.position_watch import watch_mode_active
+                from src.shadow_learning import VIRTUAL_TICK_IDLE_SEC
+                sleep_secs = 3 if watch_mode_active() else VIRTUAL_TICK_IDLE_SEC
+            except Exception:
+                sleep_secs = 10
+            time.sleep(sleep_secs)
 
         STATE.set_agent_status('monitor', 'STOPPED')
+
+
+# ══════════════════════════════════════════════════════════════════
+# SIM LEARNING AGENT — autonomous virtual CE/PE on live market flow
+# ══════════════════════════════════════════════════════════════════
+
+class SimLearningAgent(threading.Thread):
+
+    def __init__(self):
+        super().__init__(daemon=True, name='SimLearningAgent')
+
+    def run(self):
+        STATE.set_agent_status('sim', 'RUNNING')
+        print("🎮 Sim Learning Agent: virtual trades on live flow ✅")
+
+        while STATE.get('system.running'):
+            try:
+                if STATE.get('system.market_open') and not STATE.get('system.paused'):
+                    from src.market_simulator import scan_and_maybe_open
+                    result = scan_and_maybe_open()
+                    if result.get('opened'):
+                        print(f"🎮 Sim opened #{result.get('id')}: {result.get('name')}")
+            except Exception as e:
+                STATE.add_error(f"Sim: {str(e)[:50]}")
+            time.sleep(60)
+
+        STATE.set_agent_status('sim', 'STOPPED')

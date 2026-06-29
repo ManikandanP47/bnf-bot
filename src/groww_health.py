@@ -50,6 +50,13 @@ def format_groww_health() -> str:
         lines.append('✅ TOTP cooldown: clear')
 
     try:
+        from src.groww_feed_store import format_feed_status_line
+        lines.append('')
+        lines.append(format_feed_status_line())
+    except Exception:
+        pass
+
+    try:
         from src.api_scheduler import format_scheduler_status
         lines.append('')
         lines.append(format_scheduler_status())
