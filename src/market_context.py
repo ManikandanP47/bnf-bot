@@ -116,8 +116,18 @@ def build_market_context(token: str = '') -> dict:
     pwl = round(min(b['low'] for b in week), 2)
     pp  = round((pdh + pdl + pdc) / 3, 2)
 
-    from src.expiry_picker import days_to_expiry
+    from src.cpr import compute_cpr, cpr_position
+    cpr = compute_cpr(pdh, pdl, pdc)
+
     from core.shared_state import STATE
+    price = STATE.get('market.price', 0) or pdc
+    today_open = 0
+    today_bars = [b for b in bars if b['date'] == today]
+    if today_bars:
+        today_open = today_bars[0]['open']
+    cpr_pos = cpr_position(price, cpr, today_open)
+
+    from src.expiry_picker import days_to_expiry
     expiry = STATE.get('zone', {}).get('expiry', '')
     dte = days_to_expiry(expiry) if expiry else 7
     now = datetime.now(IST)
@@ -131,6 +141,8 @@ def build_market_context(token: str = '') -> dict:
         'pivot': pp,
         'r1': round(2 * pp - pdl, 2),
         's1': round(2 * pp - pdh, 2),
+        'cpr': cpr,
+        'cpr_position': cpr_pos,
         'theta': theta,
         'dte_days': dte,
     })
@@ -151,6 +163,18 @@ def format_context_report() -> str:
         return "📊 *Market context*\n\nData not ready yet — refreshes during market hours."
 
     th = ctx.get('theta', {})
+    cpr = ctx.get('cpr') or {}
+    cpr_pos = ctx.get('cpr_position') or {}
+    cpr_block = ""
+    if cpr.get('available'):
+        cpr_block = (
+            f"\n*CPR:* TC {cpr['tc']:,.0f} | P {cpr['pivot']:,.0f} | BC {cpr['bc']:,.0f}\n"
+            f"  Width: {cpr['width_class']} ({cpr['width_pct']:.2f}%)\n"
+            f"  Position: {cpr_pos.get('zone', '?').replace('_', ' ')}"
+        )
+        if cpr_pos.get('virgin'):
+            cpr_block += f" | *{cpr_pos['virgin'].replace('_', ' ')}*"
+
     return (
         f"📊 *Market Context* ({ctx.get('source', '?')} @ {ctx.get('updated', '')})\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
@@ -159,10 +183,11 @@ def format_context_report() -> str:
         f"  PDL: {ctx['pdl']:,.0f} (support)\n"
         f"  Close: {ctx['pdc']:,.0f} | Range: {ctx['prev_range']:,.0f}\n\n"
         f"*Week (5d):*\n"
-        f"  High: {ctx['pwh']:,.0f} | Low: {ctx['pwl']:,.0f}\n\n"
-        f"*Pivots:* PP {ctx['pivot']:,.0f} | R1 {ctx['r1']:,.0f} | S1 {ctx['s1']:,.0f}\n\n"
+        f"  High: {ctx['pwh']:,.0f} | Low: {ctx['pwl']:,.0f}\n"
+        f"{cpr_block}\n\n"
+        f"*Floor pivots:* R1 {ctx['r1']:,.0f} | S1 {ctx['s1']:,.0f}\n\n"
         f"*Theta risk:* {th.get('score', 0)}/100 ({th.get('level', '?')}) | "
         f"Expiry in {ctx.get('dte_days', '?')}d\n"
         f"  {', '.join(th.get('notes', [])) or 'OK'}\n\n"
-        f"_Bot uses these levels before approving CE/PE entries_"
+        f"_Send /cpr for full CPR report | /learn for RAG memory_"
     )

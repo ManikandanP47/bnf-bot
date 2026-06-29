@@ -132,6 +132,62 @@ def check_theta_context(ctx: dict) -> dict:
     return {'ok': True, 'score_delta': 0, 'reason': '', 'warnings': []}
 
 
+def check_cpr_alignment(price: float, bias: str, ctx: dict) -> dict:
+    """CPR rules used by Indian discretionary traders."""
+    cpr = ctx.get('cpr') or {}
+    pos = ctx.get('cpr_position') or {}
+    if not cpr.get('available') or not price:
+        return {'ok': True, 'score_delta': 0, 'reason': '', 'warnings': []}
+
+    warnings = []
+    delta = 0
+    wc = cpr.get('width_class', '')
+    zone = pos.get('zone', '')
+    virgin = pos.get('virgin')
+
+    if wc == 'WIDE' and zone in ('UPPER_CPR', 'LOWER_CPR'):
+        return {
+            'ok': False,
+            'score_delta': 0,
+            'reason': (
+                f'📐 Wide CPR + price inside range — chop day. '
+                f'Wait for clean break of TC {cpr["tc"]:,.0f} or BC {cpr["bc"]:,.0f}'
+            ),
+        }
+
+    if bias == 'BULLISH':
+        if virgin == 'VIRGIN_BULL':
+            delta += 2
+            warnings.append('✅ Virgin CPR bull — trend day bias')
+        elif zone == 'ABOVE_CPR':
+            delta += 1
+            warnings.append(f'✅ Above CPR TC {cpr["tc"]:,.0f}')
+        elif zone == 'BELOW_CPR':
+            return {
+                'ok': False,
+                'score_delta': 0,
+                'reason': f'📐 CE below CPR BC {cpr["bc"]:,.0f} — wrong side of pivot',
+            }
+    if bias == 'BEARISH':
+        if virgin == 'VIRGIN_BEAR':
+            delta += 2
+            warnings.append('✅ Virgin CPR bear — trend day bias')
+        elif zone == 'BELOW_CPR':
+            delta += 1
+            warnings.append(f'✅ Below CPR BC {cpr["bc"]:,.0f}')
+        elif zone == 'ABOVE_CPR':
+            return {
+                'ok': False,
+                'score_delta': 0,
+                'reason': f'📐 PE above CPR TC {cpr["tc"]:,.0f} — wrong side of pivot',
+            }
+
+    if wc == 'NARROW':
+        warnings.append(f'📐 Narrow CPR ({cpr["width_pct"]:.2f}%) — breakout potential')
+
+    return {'ok': True, 'score_delta': delta, 'reason': '', 'warnings': warnings}
+
+
 def check_backtest_alignment(ctx: dict) -> dict:
     """Use last quick-backtest stats to tighten on weak historical edge."""
     from core.shared_state import STATE
@@ -186,6 +242,18 @@ def run_knowledge_checks(signal: dict, candles_5m: list = None) -> dict:
         score_delta += r.get('score_delta', 0)
         warnings.extend(r.get('warnings', []))
 
+    cpr_r = check_cpr_alignment(price, bias, ctx)
+    if not cpr_r.get('ok', True):
+        return {
+            'ok': False,
+            'reason': cpr_r['reason'],
+            'score_delta': 0,
+            'patterns': patterns,
+            'warnings': warnings,
+        }
+    score_delta += cpr_r.get('score_delta', 0)
+    warnings.extend(cpr_r.get('warnings', []))
+
     lvl = check_level_alignment(price, bias, ctx)
     if not lvl.get('ok', True):
         return {
@@ -201,6 +269,20 @@ def run_knowledge_checks(signal: dict, candles_5m: list = None) -> dict:
     pat = detect_5m_patterns(c5m, bias)
     patterns = pat.get('patterns', [])
     score_delta += pat.get('score_delta', 0)
+
+    from src.market_rag import apply_rag_to_signal
+    rag = apply_rag_to_signal(signal)
+    if not rag.get('ok', True):
+        return {
+            'ok': False,
+            'reason': rag['reason'],
+            'score_delta': 0,
+            'patterns': patterns,
+            'warnings': warnings,
+        }
+    score_delta += rag.get('score_delta', 0)
+    for line in rag.get('reasons', [])[:2]:
+        warnings.append(line)
 
     return {
         'ok': True,

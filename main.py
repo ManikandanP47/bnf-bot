@@ -380,10 +380,12 @@ def main():
             from agents.data_agent import DataAgent
             from src.market_context import refresh_market_context
             from src.history_backtest import refresh_backtest_summary
+            from src.market_rag import init_knowledge_base
+            init_knowledge_base()
             tok = DataAgent().get_groww_token()
             refresh_market_context(tok)
             refresh_backtest_summary(tok)
-            print("📊 Market context + history backtest warmed")
+            print("📊 Market context + RAG + history backtest warmed")
         except Exception as e:
             print(f"Market intel warm skipped: {e}")
 

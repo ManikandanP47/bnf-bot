@@ -219,6 +219,21 @@ class TraderBrain:
         self._update_patterns(tid, outcome, pnl_rs)
         self._update_daily_pnl(data.get('date') or datetime.now(IST).strftime('%Y-%m-%d'),
                                 outcome, pnl_rs)
+        try:
+            from src.market_rag import ingest_trade_lesson
+            from core.shared_state import STATE
+            ctx = STATE.get('market.context') or {}
+            ingest_trade_lesson(
+                session=self._get_field(tid, 'session') or '',
+                bias=self._get_field(tid, 'bias') or '',
+                regime=STATE.get('market.regime', ''),
+                mistake=mistake,
+                lesson=lesson,
+                outcome=outcome,
+                cpr_class=(ctx.get('cpr') or {}).get('width_class', ''),
+            )
+        except Exception:
+            pass
         return {'outcome': outcome, 'lesson': lesson, 'mistake': mistake, 'pnl_rs': pnl_rs}
 
     def _update_daily_pnl(self, date_str: str, outcome: str, pnl_rs: float):

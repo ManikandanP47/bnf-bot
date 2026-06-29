@@ -240,6 +240,19 @@ class CommandListener(threading.Thread):
             from src.history_backtest import format_backtest_report
             return format_backtest_report()
 
+        elif cmd == '/cpr':
+            from core.shared_state import STATE
+            from src.cpr import format_cpr_report
+            ctx = STATE.get('market.context') or {}
+            from src.market_context import build_market_context
+            if not ctx.get('cpr'):
+                ctx = build_market_context()
+            return format_cpr_report(ctx)
+
+        elif cmd == '/learn':
+            from src.market_rag import format_learn_report
+            return format_learn_report()
+
         elif cmd == '/help':
             return (
                 "🤖 *BNF Bot Commands*\n"
@@ -253,6 +266,8 @@ class CommandListener(threading.Thread):
                 "/funnel — Signal funnel + skip learning\n"
                 "/context — PDH/PDL, theta, pivots\n"
                 "/backtest — History proxy backtest\n"
+                "/cpr — Central Pivot Range (TC/P/BC)\n"
+                "/learn — RAG memory (rules + your trades)\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"
                 "/pnl     — Today's P&L\n"
