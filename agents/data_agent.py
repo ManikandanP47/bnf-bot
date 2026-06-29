@@ -73,6 +73,7 @@ class DataAgent(threading.Thread):
         self.b15 = CandleBuilder(15)  # 15-min: market structure
         self.running = True
         self._token  = None
+        self._ctx_tick = 0
 
     def is_market_time(self) -> bool:
         now = datetime.now(IST).time()
@@ -314,6 +315,13 @@ class DataAgent(threading.Thread):
                     self._publish(result['price'],
                                   result.get('volume', 1000),
                                   result.get('source', 'UNKNOWN'))
+                    self._ctx_tick += 1
+                    if self._ctx_tick % 6 == 1:
+                        try:
+                            from src.market_context import refresh_market_context
+                            refresh_market_context(self._token or '')
+                        except Exception:
+                            pass
                     time.sleep(10)
                 else:
                     STATE.set('market.connected', False)

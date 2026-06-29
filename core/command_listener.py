@@ -232,6 +232,14 @@ class CommandListener(threading.Thread):
             from src.trade_analytics import format_funnel_report
             return format_funnel_report()
 
+        elif cmd == '/context':
+            from src.market_context import format_context_report
+            return format_context_report()
+
+        elif cmd == '/backtest':
+            from src.history_backtest import format_backtest_report
+            return format_backtest_report()
+
         elif cmd == '/help':
             return (
                 "🤖 *BNF Bot Commands*\n"
@@ -243,6 +251,8 @@ class CommandListener(threading.Thread):
                 "/journal — Today's paper trades + brain\n"
                 "/readiness — Live gate checklist (8 gates)\n"
                 "/funnel — Signal funnel + skip learning\n"
+                "/context — PDH/PDL, theta, pivots\n"
+                "/backtest — History proxy backtest\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"
                 "/pnl     — Today's P&L\n"

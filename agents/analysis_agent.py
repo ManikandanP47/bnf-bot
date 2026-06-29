@@ -309,6 +309,22 @@ class AnalysisAgent(threading.Thread):
         if STATE.get('signals.awaiting_confirmation') or STATE.get('signals.confirmation_sent'):
             return
 
+        # Trading knowledge — levels, theta, candles, history alignment
+        signal_preview = {
+            'price': price, 'trend': bias, 'session': session, 'score': score,
+        }
+        from src.trading_knowledge import run_knowledge_checks
+        know = run_knowledge_checks(signal_preview, c5m)
+        if not know.get('ok', True):
+            from src.trade_analytics import log_funnel
+            log_funnel('knowledge_block', signal_preview, know.get('reason', ''))
+            return
+        score += know.get('score_delta', 0)
+        for w in know.get('warnings', []):
+            reasons.append(w)
+        if know.get('patterns'):
+            reasons.append(f"✅ 5M: {', '.join(know['patterns'])}")
+
         # Publish signal
         STATE.update('signals', {
             'analysis_ready': True,

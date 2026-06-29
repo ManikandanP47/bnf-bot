@@ -288,6 +288,16 @@ def scheduler(messenger: Messenger):
             if (weekday == 6 and hour == 20 and minute < 5 and last_weekly != now.day):
                 last_weekly = now.day
                 messenger.send(BRAIN.weekly_report())
+                try:
+                    from src.history_backtest import refresh_backtest_summary, format_backtest_report
+                    from src.market_context import refresh_market_context
+                    from agents.data_agent import DataAgent
+                    tok = DataAgent().get_groww_token()
+                    refresh_market_context(tok)
+                    refresh_backtest_summary(tok)
+                    messenger.send(format_backtest_report())
+                except Exception:
+                    pass
 
         except Exception as e:
             print(f"Scheduler error: {e}")
@@ -363,6 +373,21 @@ def main():
             pass
 
     threading.Thread(target=_warm_readiness_cache, daemon=True).start()
+
+    def _warm_market_intel():
+        time.sleep(8)
+        try:
+            from agents.data_agent import DataAgent
+            from src.market_context import refresh_market_context
+            from src.history_backtest import refresh_backtest_summary
+            tok = DataAgent().get_groww_token()
+            refresh_market_context(tok)
+            refresh_backtest_summary(tok)
+            print("📊 Market context + history backtest warmed")
+        except Exception as e:
+            print(f"Market intel warm skipped: {e}")
+
+    threading.Thread(target=_warm_market_intel, daemon=True).start()
 
     now = datetime.now(IST)
     if now.weekday() < 5 and 9 <= now.hour <= 11:
