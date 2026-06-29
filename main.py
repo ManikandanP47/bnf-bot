@@ -422,6 +422,7 @@ def main():
         f"💓 Auto pulses: 10 AM, 12 PM, 2 PM | 🎓 Shadow drills on setups\n"
         f"💾 Daily backup 3:40 PM | 🚨 Uptime alert if bot goes silent\n"
         f"📊 Nifty correlation filter + shadow WR auto-tunes min score\n"
+        f"🎯 WR filters: flow≥4, VWAP hard, OI walls, zone confirm, sweet premium\n"
         f"🤖 AI coach on /today, journal & trade cards (if OpenAI set)\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )

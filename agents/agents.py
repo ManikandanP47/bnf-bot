@@ -51,6 +51,11 @@ class RiskAgent(threading.Thread):
                     ),
                 }
 
+        from src.wr_filters import check_session_win_rate
+        sess_wr = check_session_win_rate(session)
+        if not sess_wr.get('ok', True):
+            return {'approved': False, 'reason': sess_wr['reason']}
+
         # ── Capital loss caps (salary trader protection) ──────────
         from src.capital_guard import check_daily_loss_cap, check_weekly_loss_cap
         daily_cap = check_daily_loss_cap()
@@ -189,6 +194,12 @@ class RiskAgent(threading.Thread):
         if combo['block']:
             return {'approved': False, 'reason': combo['reason']}
 
+        from src.wr_filters import check_expiry_week_rules
+        exp_chk = check_expiry_week_rules(score)
+        if not exp_chk.get('ok', True):
+            return {'approved': False, 'reason': exp_chk['reason']}
+        min_score += exp_chk.get('min_score_boost', 0)
+
         if score < min_score:
             return {'approved': False,
                     'reason': f"Score {score} < brain min {min_score}"}
@@ -294,11 +305,40 @@ class RiskAgent(threading.Thread):
         try:
             from src.market_flow import flow_allows_trade
             from src.chart_levels import check_chart_levels
+            from src.wr_filters import (
+                check_min_flow_score, check_oi_wall_veto,
+                check_shadow_agreement, check_premium_sweet_spot,
+            )
             flow_chk = flow_allows_trade(trend, price)
             flow = flow_chk.get('flow', {})
             STATE.set('signals.market_flow', flow)
             if not flow_chk.get('ok', True):
                 return {'approved': False, 'reason': flow_chk['reason']}
+
+            fs_chk = check_min_flow_score(flow, score)
+            if not fs_chk.get('ok', True):
+                return {'approved': False, 'reason': fs_chk['reason']}
+            reasons.append(fs_chk.get('reason', ''))
+
+            target_px = zone.get('high', price) if trend == 'BULLISH' else zone.get('low', price)
+            oi_wall = check_oi_wall_veto(trend, price, target_px)
+            if not oi_wall.get('ok', True):
+                return {'approved': False, 'reason': oi_wall['reason']}
+            if oi_wall.get('reason'):
+                reasons.append(oi_wall['reason'])
+
+            shadow_chk = check_shadow_agreement(trend)
+            if not shadow_chk.get('ok', True):
+                return {'approved': False, 'reason': shadow_chk['reason']}
+            if shadow_chk.get('reason'):
+                reasons.append(shadow_chk['reason'])
+
+            sweet = check_premium_sweet_spot(est_prem)
+            if not sweet.get('ok', True):
+                return {'approved': False, 'reason': sweet['reason']}
+            if sweet.get('reason'):
+                reasons.append(sweet['reason'])
+
             chart = flow.get('chart', {})
             chart_chk = check_chart_levels(price, trend, chart)
             if not chart_chk.get('ok', True):
@@ -502,6 +542,11 @@ class ExecutionAgent(threading.Thread):
         prem = check_premium_sanity(params.get('premium', 0), params.get('lot_cost', 0))
         if not prem['ok']:
             return {'ok': False, 'reason': prem['reason']}
+
+        from src.wr_filters import check_premium_sweet_spot
+        sweet = check_premium_sweet_spot(params.get('premium', 0))
+        if not sweet['ok']:
+            return {'ok': False, 'reason': sweet['reason']}
 
         liq = check_liquidity(
             params.get('strike', 0),

@@ -234,10 +234,16 @@ class AnalysisAgent(threading.Thread):
         if not in_zone:
             return  # Price not at our level yet
 
+        bias = zone.get('bias', 'NEUTRAL')
+
+        from src.wr_filters import check_zone_confirmation, check_vwap_hard
+        zc = check_zone_confirmation(in_zone)
+        if not zc.get('ok', True):
+            return
+
         # ── TIMEFRAME 1: 15-MIN STRUCTURE ────────────────────────
         # Top-down: 15-min must confirm overall direction
         struct_15m = get_structure(c15m)
-        bias        = zone.get('bias', 'NEUTRAL')
 
         if struct_15m['trend'] != bias:
             # 15-min disagrees with daily bias — risky trade
@@ -256,6 +262,10 @@ class AnalysisAgent(threading.Thread):
         vol_check = check_volume_quality(c5m)
         if vol_check['quality'] == 'BAD':
             return  # High volume pullback = not genuine
+
+        vwap_chk = check_vwap_hard(price, vwap, bias)
+        if not vwap_chk.get('ok', True):
+            return
 
         # ── TIMEFRAME 3: 1-MIN TRIGGER ───────────────────────────
         # Final entry timing — 1-min must also confirm
