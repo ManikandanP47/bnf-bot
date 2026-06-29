@@ -148,9 +148,19 @@ class RiskAgent(threading.Thread):
         from src.brain_metrics import get_dynamic_min_score, check_pattern_combo
         dyn_score    = get_dynamic_min_score(min_score)
         if dyn_score > min_score:
-            warnings.append(
-                f"🧠 Recent paper weak — min score raised to {dyn_score}"
-            )
+            try:
+                from src.shadow_tuning import shadow_score_adjustment
+                sh = shadow_score_adjustment(min_score)
+                if sh.get('boost', 0) > 0 and sh.get('reason'):
+                    warnings.append(sh['reason'])
+                else:
+                    warnings.append(
+                        f"🧠 Recent paper weak — min score raised to {dyn_score}"
+                    )
+            except Exception:
+                warnings.append(
+                    f"🧠 Min score raised to {dyn_score}"
+                )
             min_score = dyn_score
         max_trades   = brain.get('max_trades_day', 1)
         trades_today = brain.get('trades_today', 0)

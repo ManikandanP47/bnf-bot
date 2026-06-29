@@ -152,6 +152,25 @@ class CommandListener(threading.Thread):
                 'Paper mode — send /readiness for full checklist',
             )
             brain    = STATE.get('brain', {})
+            backup_line = ''
+            shadow_line = ''
+            try:
+                from src.ops_backup import format_backup_status
+                backup_line = f"\n*Backup:* {format_backup_status()}"
+            except Exception:
+                pass
+            try:
+                from src.brain_metrics import get_dynamic_min_score
+                from src.shadow_tuning import shadow_score_adjustment
+                base = brain.get('min_score', 5)
+                dyn = get_dynamic_min_score(base)
+                sh = shadow_score_adjustment(base)
+                if sh.get('reason'):
+                    shadow_line = f"\n*Shadow tune:* min {dyn} — {sh['reason'][:60]}"
+                elif dyn > base:
+                    shadow_line = f"\n*Min score:* {dyn} (raised from {base})"
+            except Exception:
+                pass
             return (
                 f"📊 *Bot Status — {now}*\n"
                 f"━━━━━━━━━━━━━━━━━\n"
@@ -163,7 +182,7 @@ class CommandListener(threading.Thread):
                 f"*Zone:* {'✅ ' + f'{zone_low:,.0f}–{zone_high:,.0f}' if zone_active else 'None'}\n\n"
                 f"*Today:* {trades_today} trade(s) | {pnl_emoji} ₹{today_pnl:,.0f}\n"
                 f"*Week losses:* {weekly_loss}/2\n"
-                f"*Brain:* {brain.get('learning_stage', 'EARLY')}\n\n"
+                f"*Brain:* {brain.get('learning_stage', 'EARLY')}{shadow_line}{backup_line}\n\n"
                 f"*Live readiness:* {live_reason}"
             )
 
@@ -251,7 +270,10 @@ class CommandListener(threading.Thread):
         elif cmd == '/learn':
             from src.market_rag import format_learn_report
             from src.shadow_learning import format_shadow_brief
-            return format_learn_report() + "\n\n" + format_shadow_brief()
+            from src.shadow_tuning import shadow_score_adjustment
+            tune = shadow_score_adjustment(5)
+            tune_line = f"\n\n{tune['reason']}" if tune.get('reason') else ''
+            return format_learn_report() + "\n\n" + format_shadow_brief() + tune_line
 
         elif cmd == '/shadow':
             from src.shadow_learning import format_shadow_daily_section, learning_phase_info

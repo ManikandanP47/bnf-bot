@@ -250,21 +250,29 @@ def assess_live_readiness() -> dict:
 
 def get_dynamic_min_score(base: int = 5) -> int:
     """
-    Tighten entry bar when recent paper performance is weak.
+    Tighten entry bar when recent paper performance is weak
+    or shadow drills show poor virtual edge.
     Protects capital during learning phase.
     """
+    score = base
     recent = get_closed_trades(limit=8)
-    if len(recent) < 5:
-        return base
-    recent_wr = sum(1 for r in recent if r[2] == 'WIN') / len(recent) * 100
-    streak    = _consecutive_losses(recent)
-    score     = base
-    if recent_wr < 40:
-        score = max(score, 7)
-    if streak >= 2:
-        score = max(score, 8)
-    if streak >= MAX_CONSEC_LOSSES:
-        score = max(score, 9)
+    if len(recent) >= 5:
+        recent_wr = sum(1 for r in recent if r[2] == 'WIN') / len(recent) * 100
+        streak    = _consecutive_losses(recent)
+        if recent_wr < 40:
+            score = max(score, 7)
+        if streak >= 2:
+            score = max(score, 8)
+        if streak >= MAX_CONSEC_LOSSES:
+            score = max(score, 9)
+
+    try:
+        from src.shadow_tuning import shadow_score_adjustment
+        sh = shadow_score_adjustment(base)
+        score = max(score, sh.get('min_score', base))
+    except Exception:
+        pass
+
     return score
 
 

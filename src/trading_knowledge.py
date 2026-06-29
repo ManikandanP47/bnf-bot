@@ -285,6 +285,20 @@ def run_knowledge_checks(signal: dict, candles_5m: list = None) -> dict:
     patterns = pat.get('patterns', [])
     score_delta += pat.get('score_delta', 0)
 
+    from src.nifty_correlation import check_nifty_bnf_correlation
+    corr = check_nifty_bnf_correlation(bias)
+    if not corr.get('ok', True):
+        return {
+            'ok': False,
+            'reason': corr['reason'],
+            'score_delta': 0,
+            'patterns': patterns,
+            'warnings': warnings,
+        }
+    score_delta += corr.get('score_delta', 0)
+    if corr.get('reason'):
+        warnings.append(corr['reason'])
+
     from src.market_rag import apply_rag_to_signal
     rag = apply_rag_to_signal(signal)
     if not rag.get('ok', True):

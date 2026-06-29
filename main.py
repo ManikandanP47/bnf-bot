@@ -170,6 +170,8 @@ def scheduler(messenger: Messenger):
     last_skip      = -1
     last_readiness = -1
     last_pulse_hour = -1
+    last_backup     = -1
+    last_uptime_day = -1
 
     while STATE.get('system.running'):
         try:
@@ -253,6 +255,29 @@ def scheduler(messenger: Messenger):
                         f"📚 *Skip learning updated* — {n} skipped setup(s) resolved at EOD.\n"
                         f"Type /funnel to see if your skips were good."
                     )
+
+            # 3:40 PM — daily DB + zone backup
+            if hour == 15 and 39 <= minute <= 43 and last_backup != now.day:
+                last_backup = now.day
+                try:
+                    from src.ops_backup import run_daily_backup, format_backup_status
+                    bk = run_daily_backup()
+                    if bk.get('ok'):
+                        messenger.send(
+                            f"💾 *Daily backup OK*\n"
+                            f"  {', '.join(bk.get('files', []))}\n"
+                            f"  {format_backup_status()}"
+                        )
+                except Exception as e:
+                    STATE.add_error(f"Backup: {str(e)[:40]}")
+
+            # Uptime watchdog — alert if heartbeat stale during market hours
+            if 9 <= hour <= 15 and minute in (0, 15, 30, 45):
+                try:
+                    from src.ops_backup import check_uptime_and_alert
+                    last_uptime_day = check_uptime_and_alert(messenger, last_uptime_day)
+                except Exception:
+                    pass
 
             # Market pulse — regular "bot is alive" check-ins (10 AM, 12 PM, 2 PM)
             try:
@@ -395,6 +420,8 @@ def main():
         f"/shadow /learn /backtest — Drills, RAG memory, history\n"
         f"/help — Full command list\n\n"
         f"💓 Auto pulses: 10 AM, 12 PM, 2 PM | 🎓 Shadow drills on setups\n"
+        f"💾 Daily backup 3:40 PM | 🚨 Uptime alert if bot goes silent\n"
+        f"📊 Nifty correlation filter + shadow WR auto-tunes min score\n"
         f"🤖 AI coach on /today, journal & trade cards (if OpenAI set)\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
