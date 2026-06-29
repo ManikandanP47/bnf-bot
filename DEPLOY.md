@@ -57,6 +57,18 @@ tail -f ~/bnf-bot/bot.log     # same output in bot.log
 
 ### Update after git pull
 
+**One command (recommended):**
+
+```bash
+cd ~/bnf-bot
+chmod +x deploy/update.sh
+./deploy/update.sh
+```
+
+This pulls `main`, installs deps, adds missing ML/sim env defaults, and restarts systemd.
+
+**Manual:**
+
 ```bash
 cd ~/bnf-bot
 git pull origin main

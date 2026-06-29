@@ -111,7 +111,7 @@ modules = [
     'src.groww_client', 'src.groww_historical', 'src.expiry_picker',
     'src.shadow_learning', 'src.virtual_broker', 'src.ml_brain',
     'src.sim_learning_report', 'src.market_simulator', 'src.ops_backup',
-    'agents.groww_feed_agent',     'src.groww_api_guard', 'src.sim_notify', 'src.ml_brain',
+    'agents.groww_feed_agent', 'src.groww_api_guard', 'src.sim_notify',
 ]
 for mod in modules:
     try:
@@ -590,6 +590,22 @@ try:
         bad("shadow_roundtrip", (r.stderr or r.stdout or '')[:120])
 except Exception as e:
     bad("shadow_roundtrip", str(e)[:120])
+
+
+# ─────────────────────────────────────────────────────────────
+section("15. ML neural net (temp DB)")
+try:
+    import subprocess
+    r = subprocess.run(
+        [sys.executable, os.path.join(ROOT, 'tests', 'test_ml_nn.py')],
+        capture_output=True, text=True, timeout=90, cwd=ROOT,
+    )
+    if r.returncode == 0:
+        ok("ml_nn_ensemble", (r.stdout or '').strip().split('\n')[-1][:60])
+    else:
+        bad("ml_nn_ensemble", (r.stderr or r.stdout or '')[:120])
+except Exception as e:
+    bad("ml_nn_ensemble", str(e)[:120])
 
 
 # ─────────────────────────────────────────────────────────────

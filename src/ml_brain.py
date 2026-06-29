@@ -437,6 +437,36 @@ def maybe_retrain():
     return {'ok': False, 'samples': n, 'reason': 'waiting for more data'}
 
 
+def _samples_eta(n: int) -> str:
+    """Rough trading sessions until RF/NN from recent virtual close rate."""
+    meta = _meta()
+    if n >= ML_NN_MIN_SAMPLES and meta.get('nn'):
+        return ''
+    try:
+        conn = _conn()
+        rows = conn.execute("""
+            SELECT date, COUNT(*) FROM shadow_trades
+            WHERE status='CLOSED'
+            GROUP BY date ORDER BY date DESC LIMIT 14
+        """).fetchall()
+        conn.close()
+        if not rows:
+            return '_Virtual sims close in market hours — watch /shadow_'
+        total = sum(r[1] for r in rows)
+        days = len(rows)
+        rate = total / days
+        if rate < 0.3:
+            return '_Low close rate — quiet market or bot recently started_'
+        parts = []
+        if n < ML_MIN_SAMPLES:
+            parts.append(f'RF ~{max(1, int((ML_MIN_SAMPLES - n) / rate + 0.5))} sessions')
+        if n < ML_NN_MIN_SAMPLES:
+            parts.append(f'NN ~{max(1, int((ML_NN_MIN_SAMPLES - n) / rate + 0.5))} sessions')
+        return f"_~{rate:.1f} closes/day → {' | '.join(parts)}_"
+    except Exception:
+        return ''
+
+
 def format_ml_status() -> str:
     meta = _meta()
     rows = _load_training_rows()
@@ -467,6 +497,10 @@ def format_ml_status() -> str:
             lines.append('  🧠 NN: training on next retrain')
     else:
         lines.append(f"_RF needs {max(0, ML_MIN_SAMPLES - n)} more | NN at {ML_NN_MIN_SAMPLES}_")
+
+    eta = _samples_eta(n)
+    if eta:
+        lines.append(eta)
 
     lines.append('_Learns from every virtual + paper close automatically_')
     return '\n'.join(lines)
