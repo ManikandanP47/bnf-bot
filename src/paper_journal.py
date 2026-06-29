@@ -205,10 +205,22 @@ def format_daily_paper_report() -> str:
     ]
     try:
         from src.shadow_learning import format_shadow_daily_section, resolve_shadow_eod
+        from src.learning_scoreboard import format_scoreboard_block
         resolve_shadow_eod()
         lines.append(format_shadow_daily_section())
+        lines.append(format_scoreboard_block(7))
     except Exception:
         pass
+
+    try:
+        from src.llm_advisor import llm_enabled, summarize_day
+        if llm_enabled():
+            ai = summarize_day('\n'.join(lines[:25]))
+            if ai:
+                lines += ["", "🤖 *AI day summary:*", ai]
+    except Exception:
+        pass
+
     return '\n'.join(lines)
 
 

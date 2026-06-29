@@ -391,7 +391,7 @@ def main():
         f"/execute /skip — Confirm or skip trade\n"
         f"/status /pnl /zone — Health & P&L\n"
         f"/journal /readiness /funnel — Paper & gates\n"
-        f"/context /cpr /flow — Levels & F&O flow\n"
+        f"/context /cpr /flow /today — Levels, F&O flow, dashboard\n"
         f"/backtest /learn — History & brain memory\n"
         f"/help — Full command list\n\n"
         f"🎓 *Learning:* shadow drills auto on every setup (2-week phase)\n"

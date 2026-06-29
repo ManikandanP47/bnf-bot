@@ -263,6 +263,10 @@ class CommandListener(threading.Thread):
             )
             return hdr + format_shadow_daily_section()
 
+        elif cmd == '/today':
+            from src.today_dashboard import format_today_dashboard
+            return format_today_dashboard()
+
         elif cmd == '/flow':
             from src.market_flow import refresh_market_flow, format_flow_report
             zone = STATE.get('zone') or {}
@@ -284,6 +288,7 @@ class CommandListener(threading.Thread):
                 "/backtest — History proxy backtest\n"
                 "/cpr — Central Pivot Range (TC/P/BC)\n"
                 "/flow — OI, VIX, EMA, theta, chart lines (also 9:25 AM auto)\n"
+                "/today — Full day dashboard + AI coach\n"
                 "/learn — RAG memory (rules + your trades)\n"
                 "/shadow — Virtual drill results today\n"
                 "/stop    — Emergency stop\n"

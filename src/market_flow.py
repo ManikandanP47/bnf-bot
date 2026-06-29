@@ -76,16 +76,39 @@ def build_market_flow(price: float = 0, bias: str = 'BULLISH') -> dict:
     theta_est = estimate_theta_bleed(premium, dte, datetime.now(IST).hour)
     oi_deep = _get_oi_deep_cached()
 
-    flow_score = 0
-    flow_score += vix.get('score', 0)
-    flow_score += oi.get('score', 0)
-    flow_score += ema.get('score', 0)
-
     blocked = []
     if vix.get('status') == 'BLOCK':
         blocked.append(vix.get('reason', 'VIX block'))
     if ema.get('status') == 'BLOCK':
         blocked.append(ema.get('reason', 'EMA block'))
+
+    flow_score = 0
+    flow_score += vix.get('score', 0)
+    flow_score += oi.get('score', 0)
+    flow_score += ema.get('score', 0)
+
+    oi_chg = {'available': False}
+    vix_rank = {'available': False}
+    try:
+        from src.oi_change import analyse_oi_change
+        oi_chg = analyse_oi_change(bias, price) if price else {'available': False}
+        if oi_chg.get('available'):
+            flow_score += oi_chg.get('score', 0)
+            if oi_chg.get('block'):
+                blocked.append(
+                    f"OI change: fresh writing at wall — {oi_chg.get('summary', '')}"
+                )
+    except Exception:
+        pass
+    try:
+        from src.vix_rank import check_vix_rank
+        vix_rank = check_vix_rank()
+        if vix_rank.get('available'):
+            flow_score += vix_rank.get('score', 0)
+            if vix_rank.get('expensive'):
+                blocked.append(vix_rank.get('reason', 'VIX percentile high'))
+    except Exception:
+        pass
 
     snap = {
         'available':   True,
@@ -103,6 +126,8 @@ def build_market_flow(price: float = 0, bias: str = 'BULLISH') -> dict:
         'chart':       chart,
         'flow_score':  flow_score,
         'blocked':     blocked,
+        'oi_change':   oi_chg,
+        'vix_rank':    vix_rank,
     }
     return snap
 
@@ -196,10 +221,20 @@ def format_flow_report() -> str:
         "",
         "*Fear (VIX):*",
         f"  {vix.get('reason', '—')}",
+    ]
+    vr = flow.get('vix_rank', {})
+    if vr.get('available'):
+        lines.append(f"  {vr.get('reason', '')}")
+    lines += [
         "",
         "*Open Interest:*",
         f"  {oi.get('reason', '—')}",
     ]
+    oc = flow.get('oi_change', {})
+    if oc.get('available'):
+        lines.append(f"  Δ OI: {oc.get('summary', '')}")
+        for w in oc.get('warnings', [])[:1]:
+            lines.append(f"  {w}")
     if od:
         lines += [
             f"  PCR {od.get('pcr', '?')} ({od.get('pcr_signal', '?')})",

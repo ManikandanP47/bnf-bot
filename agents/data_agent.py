@@ -81,19 +81,13 @@ class DataAgent(threading.Thread):
 
     def get_groww_token(self) -> str:
         try:
-            import pyotp
-            from growwapi import GrowwAPI
-            secret = os.getenv('GROWW_TOTP_SECRET', '')
-            token  = os.getenv('GROWW_TOTP_TOKEN',  '')
-            if secret and token:
-                totp = pyotp.TOTP(secret).now()
-                access_token = GrowwAPI.get_access_token(api_key=token, totp=totp)
-                # Store in STATE so Execution Agent can use it
-                STATE.set('system.groww_token', access_token)
-                from src.groww_client import clear_groww_client
-                clear_groww_client()
-                self._token = access_token
-                return access_token
+            from src.groww_auth import fetch_groww_token
+            access_token = fetch_groww_token(max_retries=2, base_delay_sec=30)
+            STATE.set('system.groww_token', access_token)
+            from src.groww_client import clear_groww_client
+            clear_groww_client()
+            self._token = access_token
+            return access_token
         except Exception as e:
             STATE.add_error(f"Token: {str(e)[:40]}")
         return os.getenv('GROWW_ACCESS_TOKEN', '')

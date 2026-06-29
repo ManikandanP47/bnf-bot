@@ -54,6 +54,14 @@ def format_market_pulse() -> str:
         f"Bot: {'⏸️ Paused' if paused else '▶️ Active'} | Agents {running}/7 ✅",
     ]
 
+    try:
+        from src.trade_filters import is_event_day
+        event = is_event_day()
+        if event.get('skip') or event.get('caution'):
+            lines.append(f"⚠️ *Event day:* {event.get('reason', 'high impact')}")
+    except Exception:
+        pass
+
     if pos:
         lines.append(f"📌 Position: {STATE.get('position.name', 'open')}")
 

@@ -492,10 +492,14 @@ class TraderBrain:
         less_txt = '\n'.join(f"  {l[0]}" for l in lessons) or "  No lessons this week"
 
         from src.brain_metrics import compute_paper_confidence, assess_live_readiness
+        from src.learning_scoreboard import format_scoreboard_block, estimate_slippage_from_shadow
         conf  = compute_paper_confidence()
         ready = assess_live_readiness()
+        scoreboard = format_scoreboard_block(7)
+        slip = estimate_slippage_from_shadow()
+        slip_line = f"\n📐 {slip['note']}\n" if slip.get('available') else ''
 
-        return (
+        body = (
             f"🧠 *Weekly Brain Report*\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 This Week: {len(week)} trades | "
@@ -503,6 +507,8 @@ class TraderBrain:
             f"📊 All time:  {len(all_)} trades | {t_wr:.1f}% win rate\n"
             f"🎯 Paper confidence: {conf['score']}/100 ({conf['grade']})\n"
             f"🛡️ Live readiness: {ready['reason']}\n\n"
+            f"{scoreboard}\n"
+            f"{slip_line}\n"
             f"🎯 Adaptive Settings:\n"
             f"  Stage: {thresh['learning_stage']}\n"
             f"  Min score: {thresh['min_score']}\n"
@@ -513,6 +519,15 @@ class TraderBrain:
             f"📚 Lessons:\n{less_txt}\n\n"
             f"_Learning from every trade_ 🤖"
         )
+        try:
+            from src.llm_advisor import llm_enabled, weekly_coach_note
+            if llm_enabled():
+                ai = weekly_coach_note(body)
+                if ai:
+                    body += f"\n\n🤖 *AI weekly coach:*\n{ai}"
+        except Exception:
+            pass
+        return body
 
     # helpers
     def _get_field(self, tid, field):

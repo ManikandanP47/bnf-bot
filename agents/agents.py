@@ -156,14 +156,20 @@ class RiskAgent(threading.Thread):
         trades_today = brain.get('trades_today', 0)
         try:
             from src.shadow_learning import is_learning_phase, learning_phase_info
+            from src.learning_scoreboard import post_learning_max_trades
+            cap = post_learning_max_trades()
+            max_trades = min(max_trades, cap)
             if is_learning_phase():
-                max_trades = min(max_trades, 1)
                 info = learning_phase_info()
                 if info['days_left'] > 0:
                     warnings.append(
                         f"🎓 Learning phase ({info['days_left']}d left) — "
-                        f"max 1 confirmed trade/day; shadow drills active"
+                        f"max {cap} confirmed trade/day; shadow drills active"
                     )
+            else:
+                warnings.append(
+                    f"🎯 Graduated — precision mode max {cap} trade/day"
+                )
         except Exception:
             pass
         avoid_hours  = brain.get('avoid_hours', [])
@@ -647,6 +653,14 @@ class ExecutionAgent(threading.Thread):
         if flow:
             from src.market_flow import format_flow_compact
             msg += format_flow_compact(flow)
+        try:
+            from src.llm_advisor import llm_enabled, explain_trade_setup
+            if llm_enabled():
+                ai = explain_trade_setup(signal, risk)
+                if ai:
+                    msg += f"\n\n🤖 *AI coach:*\n{ai}\n"
+        except Exception:
+            pass
         msg += (
             f"\n💰 *Min profit (leg 1 @ 1.5×):* ~₹{params.get('leg1_profit', 0):,}\n"
             f"_Confidence: {risk.get('confidence', 0)}%_"
