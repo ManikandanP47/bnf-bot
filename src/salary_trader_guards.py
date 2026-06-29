@@ -172,7 +172,7 @@ def check_capital_at_risk(signal: dict, params: dict) -> dict:
     return {'ok': True, 'warnings': warnings}
 
 
-def check_expiry_theta(params: dict) -> dict:
+def check_expiry_theta(signal: dict, params: dict) -> dict:
     """Reject options expiring too soon (gamma/theta)."""
     from src.expiry_picker import days_to_expiry
     expiry = params.get('expiry', '') or STATE.get('zone', {}).get('expiry', '')
