@@ -99,6 +99,7 @@ def scheduler(messenger: Messenger):
     last_day_reset = -1
     last_morning   = -1
     last_daily     = -1
+    last_skip      = -1
 
     while STATE.get('system.running'):
         try:
@@ -169,6 +170,16 @@ def scheduler(messenger: Messenger):
             if hour == 15 and 34 <= minute <= 38 and last_daily != now.day:
                 last_daily = now.day
                 messenger.send(format_daily_paper_report())
+
+            if hour == 15 and 38 <= minute <= 42 and last_skip != now.day:
+                last_skip = now.day
+                from src.trade_analytics import resolve_skipped_setups
+                n = resolve_skipped_setups()
+                if n:
+                    messenger.send(
+                        f"📚 *Skip learning updated* — {n} skipped setup(s) resolved at EOD.\n"
+                        f"Type /funnel to see if your skips were good."
+                    )
 
             if hour == 20 and 13 <= minute <= 23 and last_evening != now.day:
                 last_evening = now.day
@@ -274,7 +285,8 @@ def main():
         f"/pnl — Today P&L\n"
         f"/zone — Saved zone\n"
         f"/journal — Today's paper trades\n"
-        f"/readiness — Live gate checklist\n\n"
+        f"/readiness — Live gate checklist\n"
+        f"/funnel — Signal funnel stats\n\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")

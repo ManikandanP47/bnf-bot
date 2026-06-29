@@ -71,6 +71,11 @@ class CommandListener(threading.Thread):
     def _skip_trade(self) -> str:
         if not STATE.get('signals.confirmation_sent'):
             return "❌ No pending trade to skip."
+        signal = STATE.get('signals.analysis') or {}
+        params = STATE.get('signals.pending_params') or {}
+        if signal and params:
+            from src.trade_analytics import log_skip
+            log_skip(signal, params)
         STATE.update('signals', {
             'awaiting_confirmation': False,
             'confirmation_sent':     False,
@@ -78,8 +83,13 @@ class CommandListener(threading.Thread):
             'risk_approved':         False,
             'analysis':              None,
             'risk':                  None,
+            'pending_params':        None,
         })
-        return "⏭ *Trade skipped*\nBot continues watching for the next setup."
+        return (
+            "⏭ *Trade skipped*\n"
+            "Logged for skip-learning — bot checks at EOD if skip was right.\n"
+            "_Watching for next setup_"
+        )
 
     def _handle(self, text: str) -> str:
         cmd = text.strip().lower().split()[0]
@@ -210,6 +220,10 @@ class CommandListener(threading.Thread):
             from src.brain_metrics import format_readiness_report
             return format_readiness_report()
 
+        elif cmd == '/funnel':
+            from src.trade_analytics import format_funnel_report
+            return format_funnel_report()
+
         elif cmd == '/help':
             return (
                 "🤖 *BNF Bot Commands*\n"
@@ -220,6 +234,7 @@ class CommandListener(threading.Thread):
                 "/skip    — Skip pending trade\n"
                 "/journal — Today's paper trades + brain\n"
                 "/readiness — Live gate checklist (8 gates)\n"
+                "/funnel — Signal funnel + skip learning\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"
                 "/pnl     — Today's P&L\n"

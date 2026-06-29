@@ -201,6 +201,17 @@ def assess_live_readiness() -> dict:
     all_ok &= gate('Confidence', conf['score'] >= MIN_CONFIDENCE,
                    f"{conf['score']}/100 (need {MIN_CONFIDENCE}+)")
 
+    from src.trade_analytics import compute_drawdown, compute_r_stats
+    from src.capital_guard import LIVE_CAPITAL_RS
+    dd = compute_drawdown()
+    r_stats = compute_r_stats()
+    max_dd_allowed = LIVE_CAPITAL_RS * 0.6
+    all_ok &= gate('Max drawdown', dd['max_drawdown'] < max_dd_allowed,
+                   f"₹{dd['max_drawdown']:,} (max ₹{max_dd_allowed:,.0f})")
+    if s['total'] >= 5:
+        all_ok &= gate('+1R rate', r_stats['pct_reach_1r'] >= 25,
+                       f"{r_stats['pct_reach_1r']}% trades reach +1R")
+
     failed = [g for g in gates if not g['ok']]
     if all_ok:
         reason = (
@@ -260,9 +271,12 @@ def check_pattern_combo(session: str, hour: int, score: int, regime: str) -> dic
 def format_readiness_report() -> str:
     """Full /readiness Telegram report."""
     from src.capital_guard import LIVE_CAPITAL_RS
+    from src.trade_analytics import compute_drawdown, compute_r_stats, session_expectancy
     r    = assess_live_readiness()
     conf = r['confidence']
     s    = conf.get('stats') or get_core_stats()
+    dd   = compute_drawdown()
+    r_stats = compute_r_stats()
 
     lines = [
         f"🎯 *Live Readiness Report*",
@@ -285,6 +299,21 @@ def format_readiness_report() -> str:
         f"  Avg win ₹{s['avg_win']:,} | Avg loss ₹{s['avg_loss']:,}",
         f"  Target exits: {s['efficiency_pct']}% of trades",
         f"  Direction correct: {s['direction_ok_pct']}%",
+    ]
+    lines += [
+        "",
+        "*R-multiple & drawdown:*",
+    ]
+    lines.append(f"  Avg R: {r_stats['avg_r']} | +1R rate: {r_stats['pct_reach_1r']}%")
+    lines.append(f"  Max drawdown: ₹{dd['max_drawdown']:,} | Peak: ₹{dd['peak_pnl']:,}")
+
+    sess_exp = session_expectancy()
+    if sess_exp:
+        lines += ["", "*Session expectancy:*"]
+        for sess, v in sess_exp.items():
+            lines.append(f"  {sess}: ₹{v['expectancy']}/trade ({v['trades']} trades)")
+
+    lines += [
         "",
         "*Confidence breakdown:*",
     ]

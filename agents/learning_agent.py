@@ -90,7 +90,47 @@ class TraderBrain:
                 max_loss  REAL,
                 notes     TEXT
             );
+            CREATE TABLE IF NOT EXISTS signal_funnel (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                date    TEXT,
+                time    TEXT,
+                stage   TEXT,
+                score   INTEGER,
+                bias    TEXT,
+                session TEXT,
+                reason  TEXT
+            );
+            CREATE TABLE IF NOT EXISTS skipped_setups (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                date          TEXT,
+                time          TEXT,
+                bias          TEXT,
+                score         INTEGER,
+                price         REAL,
+                option_name   TEXT,
+                entry_prem    REAL,
+                sl_prem       REAL,
+                tgt_prem      REAL,
+                session       TEXT,
+                signal_json   TEXT,
+                resolved      INTEGER DEFAULT 0,
+                would_outcome TEXT,
+                would_pnl_rs    REAL,
+                notes         TEXT
+            );
         """)
+        self._migrate_columns()
+
+    def _migrate_columns(self):
+        for col, typ in [
+            ('mae_rs', 'REAL DEFAULT 0'),
+            ('mfe_rs', 'REAL DEFAULT 0'),
+            ('slippage_rs', 'REAL DEFAULT 0'),
+        ]:
+            try:
+                self.conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
+            except sqlite3.OperationalError:
+                pass
 
     def record_entry(self, trade: dict, ctx: dict) -> int:
         """Record trade entry with full market context"""
@@ -156,16 +196,25 @@ class TraderBrain:
         hold_min   = self._hold_minutes(entry_time)
         mistake, lesson = self._classify(outcome, reason, data)
 
+        mae_rs = data.get('mae_rs', 0)
+        mfe_rs = data.get('mfe_rs', 0)
+        slip   = data.get('slippage_rs', 0)
+        if data.get('theta_decay'):
+            mistake = 'THETA_DECAY'
+            lesson  = '📚 Theta decay — direction was OK but time killed premium'
+
         with self._lock:
             self.conn.execute("""
                 UPDATE trades SET
                   exit_time=?, exit_prem=?, pnl_rs=?, pnl_pct=?,
                   r_multiple=?, outcome=?, exit_reason=?,
-                  hold_minutes=?, mistake_type=?, lesson=?
+                  hold_minutes=?, mistake_type=?, lesson=?,
+                  mae_rs=?, mfe_rs=?, slippage_rs=?
                 WHERE id=?
             """, (datetime.now(IST).strftime('%H:%M'),
                   exit_prem, pnl_rs, pnl_pct, r_multiple,
-                  outcome, reason, hold_min, mistake, lesson, tid))
+                  outcome, reason, hold_min, mistake, lesson,
+                  mae_rs, mfe_rs, slip, tid))
 
         self._update_patterns(tid, outcome, pnl_rs)
         return {'outcome': outcome, 'lesson': lesson, 'mistake': mistake, 'pnl_rs': pnl_rs}
@@ -188,6 +237,9 @@ class TraderBrain:
 
         if 'EOD' in reason.upper():
             return 'TIMING', '📚 Entered too late — trade needs more time to develop'
+        if data.get('mae_rs') and data.get('mfe_rs'):
+            if data['mfe_rs'] > abs(data.get('pnl_rs', 0)) and data.get('pnl_rs', 0) < 0:
+                return 'SL_TIGHT', '📚 Direction right but SL too tight — MFE exceeded final loss'
         if score < 7:
             return 'LOW_SCORE', '📚 Low confidence setup — raise minimum score threshold'
         if 'LUNCH' in session or 'EOD' in session:
@@ -452,8 +504,10 @@ class LearningAgent(threading.Thread):
 
     def _push_to_state(self):
         t = self.brain.get_adaptive_thresholds()
+        from src.trade_analytics import apply_mistake_auto_rules
+        rules = apply_mistake_auto_rules()
         STATE.update('brain', {
-            'min_score':      t['min_score'],
+            'min_score':      t['min_score'] + rules.get('min_score_boost', 0),
             'max_trades_day': t['max_trades_day'],
             'avoid_hours':    t['avoid_hours'],
             'best_session':   t['best_session'],
@@ -461,6 +515,9 @@ class LearningAgent(threading.Thread):
             'total_trades':   t['total_trades'],
             'kelly':          t['kelly'],
             'learning_stage': t.get('learning_stage', 'EARLY'),
+            'sl_widen_pct':   rules.get('sl_widen_pct', 0),
+            'block_ranging':  rules.get('block_ranging', False),
+            'auto_rule_note': rules.get('note', ''),
         })
 
     def run(self):

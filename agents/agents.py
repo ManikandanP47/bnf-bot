@@ -39,6 +39,18 @@ class RiskAgent(threading.Thread):
         regime   = signal.get('regime', '')
         rsi      = signal.get('rsi', 50)
 
+        from src.trade_analytics import session_expectancy
+        sess_exp = session_expectancy()
+        if session in sess_exp and sess_exp[session]['trades'] >= 5:
+            if sess_exp[session]['expectancy'] < -150:
+                return {
+                    'approved': False,
+                    'reason': (
+                        f"🧠 {session} expectancy ₹{sess_exp[session]['expectancy']}/trade "
+                        f"— brain blocks this session"
+                    ),
+                }
+
         # ── Capital loss caps (salary trader protection) ──────────
         from src.capital_guard import check_daily_loss_cap, check_weekly_loss_cap
         daily_cap = check_daily_loss_cap()
@@ -189,6 +201,9 @@ class RiskAgent(threading.Thread):
                     'reason': f"RSI {rsi} oversold — don't buy PE"}
 
         # ── Regime check ──────────────────────────────────────────
+        if STATE.get('brain', {}).get('block_ranging') and regime == 'RANGING':
+            return {'approved': False,
+                    'reason': '🧠 Brain blocked RANGING — this pattern keeps losing'}
         if regime == 'TIGHT_RANGE':
             return {'approved': False, 'reason': "Market in tight range — no edge"}
         if regime == 'RANGING':
@@ -274,6 +289,11 @@ class RiskAgent(threading.Thread):
 
                     if signal and not STATE.get('position.open'):
                         decision = self.approve(signal)
+                        from src.trade_analytics import log_funnel
+                        if decision['approved']:
+                            log_funnel('risk_ok', signal)
+                        else:
+                            log_funnel('risk_block', signal, decision.get('reason', ''))
                         needs_confirm = self._needs_confirmation()
                         approved = decision['approved']
                         STATE.update('signals', {
@@ -353,6 +373,10 @@ class ExecutionAgent(threading.Thread):
             tgt_prem = round(premium * tgt_mul, 0)
 
         brain = STATE.get('brain', {})
+        widen = brain.get('sl_widen_pct', 0)
+        if widen and not dyn:
+            sl_prem = round(premium * (1 - sl_pct * (1 + widen)), 0)
+
         lots  = compute_lots(brain.get('kelly', 0.25), brain.get('total_trades', 0))
         qty   = lots * 15
         leg1_profit = round((premium * 1.5 - premium) * (qty // 2), 0)
@@ -395,6 +419,36 @@ class ExecutionAgent(threading.Thread):
                 f"_Paper mode — no real order. Add ₹5k before live._"
             )
         return f"\n🏦 *Groww wallet:* {bal['reason']}"
+
+    def _pre_trade_checks(self, signal: dict, params: dict) -> dict:
+        """Safety, premium sanity, liquidity — all must pass."""
+        from src.safety import run_safety_checks
+        from src.trade_analytics import check_premium_sanity, check_liquidity
+
+        token = STATE.get('system.groww_token', '') or os.getenv('GROWW_ACCESS_TOKEN', '')
+        safety = run_safety_checks(
+            groww_token=token,
+            current_price=signal.get('price', 0),
+            zone=STATE.get('zone'),
+            required_balance=params.get('lot_cost', 5000),
+        )
+        if not safety.get('safe'):
+            return {'ok': False, 'reason': safety.get('reason', 'Safety check failed')}
+
+        prem = check_premium_sanity(params.get('premium', 0), params.get('lot_cost', 0))
+        if not prem['ok']:
+            return {'ok': False, 'reason': prem['reason']}
+
+        liq = check_liquidity(
+            params.get('strike', 0),
+            params.get('opt_type', 'CE'),
+            params.get('expiry', ''),
+            params.get('premium', 0),
+        )
+        if not liq['ok']:
+            return {'ok': False, 'reason': liq['reason']}
+
+        return {'ok': True, 'reason': 'All pre-trade checks passed ✅'}
 
     def place_order(self, params: dict) -> dict:
         """Execute order via Groww API"""
@@ -510,6 +564,13 @@ class ExecutionAgent(threading.Thread):
             msg += f"\n⚠️ Notes:\n{warnings}\n"
         if params.get('strike_note'):
             msg += f"\n{params['strike_note']}\n"
+        from src.trade_analytics import format_breakeven_line
+        be_line = format_breakeven_line(params)
+        if be_line:
+            msg += f"\n{be_line}\n"
+        brain_note = STATE.get('brain.auto_rule_note', '')
+        if brain_note:
+            msg += f"\n🧠 _{brain_note}_\n"
         msg += (
             f"\n💰 *Min profit (leg 1 @ 1.5×):* ~₹{params.get('leg1_profit', 0):,}\n"
             f"_Confidence: {risk.get('confidence', 0)}%_"
@@ -525,6 +586,9 @@ class ExecutionAgent(threading.Thread):
             buttons[0][0]['text'] = '✅ Execute (Live)'
 
         self.messenger.send_with_buttons(msg, buttons)
+        from src.trade_analytics import log_funnel
+        log_funnel('suggested', signal)
+        STATE.set('signals.pending_params', params)
 
     def run(self):
         STATE.set_agent_status('execution', 'RUNNING')
@@ -544,6 +608,14 @@ class ExecutionAgent(threading.Thread):
                         STATE.set('signals.awaiting_confirmation', False)
                         continue
 
+                    chk = self._pre_trade_checks(signal, params)
+                    if not chk['ok']:
+                        STATE.set('signals.awaiting_confirmation', False)
+                        self.messenger.send(
+                            f"❌ *Trade blocked before suggestion*\n{chk['reason']}"
+                        )
+                        continue
+
                     self.send_trade_suggestion(signal, risk, params)
                     STATE.set('signals.confirmation_sent', True)
                     continue
@@ -559,6 +631,13 @@ class ExecutionAgent(threading.Thread):
                     STATE.set('signals.awaiting_confirmation', False)
 
                     if not params.get('name'):
+                        continue
+
+                    chk = self._pre_trade_checks(signal, params)
+                    if not chk['ok']:
+                        self.messenger.send(
+                            f"❌ *Execute blocked*\n{chk['reason']}"
+                        )
                         continue
 
                     # Record entry in brain
@@ -583,6 +662,9 @@ class ExecutionAgent(threading.Thread):
                     result = self.place_order(params)
 
                     if result.get('success'):
+                        from src.trade_analytics import log_funnel
+                        log_funnel('executed', signal)
+                        STATE.set('signals.pending_params', None)
                         qty = params.get('qty', 15)
                         from src.zone_manager import mark_zone_used
                         mark_zone_used()
@@ -605,6 +687,8 @@ class ExecutionAgent(threading.Thread):
                             'strike':       params.get('strike', 0),
                             'learning_id':  learning_id,
                             'bnf_at_entry': signal.get('price', 0),
+                            'mae_rs':       0,
+                            'mfe_rs':       0,
                         })
 
                         # Update brain trades today
@@ -703,6 +787,19 @@ class MonitorAgent(threading.Thread):
         if new_trail_sl > trail_sl + 5:
             STATE.set('position.trail_sl', new_trail_sl)
 
+        # ── MAE / MFE tracking ────────────────────────────────────
+        rem = leg2_units if leg1_done else qty
+        unrealized = round((est_prem - entry) * rem, 0)
+        if leg1_done:
+            unrealized += position.get('leg1_profit', 0)
+        from src.trade_analytics import update_mae_mfe
+        update_mae_mfe(learning_id, unrealized)
+        cur_mae = position.get('mae_rs', 0)
+        cur_mfe = position.get('mfe_rs', 0)
+        new_mae = min(cur_mae, unrealized) if cur_mae else min(0, unrealized)
+        new_mfe = max(cur_mfe, unrealized) if cur_mfe else max(0, unrealized)
+        STATE.update('position', {'mae_rs': new_mae, 'mfe_rs': new_mfe})
+
         # ── Check exits ───────────────────────────────────────────
         exit_now    = False
         exit_reason = ''
@@ -785,16 +882,37 @@ class MonitorAgent(threading.Thread):
                 # Win resets consecutive loss streak
                 STATE.set('system.weekly_losses', 0)
 
+            mae_rs = position.get('mae_rs', 0) or BRAIN._get_field(learning_id, 'mae_rs') or 0
+            mfe_rs = position.get('mfe_rs', 0) or BRAIN._get_field(learning_id, 'mfe_rs') or 0
+            paper  = os.getenv('PAPER_MODE', 'true').lower() == 'true'
+            slippage_rs = 0
+            if paper:
+                from src.trade_analytics import apply_paper_slippage
+                pnl_rs, slippage_rs = apply_paper_slippage(pnl_rs, qty)
+                pnl_pct = round(pnl_rs / (entry * qty) * 100, 1) if entry and qty else 0
+
+            entry_time = position.get('entry_time', '')
+            hold_min = BRAIN._hold_minutes(entry_time) if entry_time else 0
+            session  = STATE.get('market.session', '')
+            from src.trade_analytics import detect_theta_loss
+            theta_decay = detect_theta_loss(
+                hold_min, session, pnl_rs, mfe_rs, exit_reason
+            )
+
             # Record in brain + learn
             brain_result = BRAIN.record_exit(learning_id, {
                 'exit_prem': est_prem,
                 'pnl_rs':    pnl_rs,
                 'pnl_pct':   pnl_pct,
                 'reason':    exit_reason,
-                'session':   STATE.get('market.session', ''),
+                'session':   session,
                 'regime':    STATE.get('market.regime', ''),
                 'score':     STATE.get('signals.analysis', {}).get('score', 5) if STATE.get('signals.analysis') else 5,
                 'rsi':       STATE.get('market.rsi_5m', 50),
+                'mae_rs':    mae_rs,
+                'mfe_rs':    mfe_rs,
+                'slippage_rs': slippage_rs,
+                'theta_decay': theta_decay,
             })
 
             # Self-validation lesson
@@ -866,6 +984,9 @@ class MonitorAgent(threading.Thread):
                         'exit_prem':     est_prem,
                         'pnl_pct':       pnl_pct,
                         'exit_reason':   exit_reason,
+                        'mae_rs':        mae_rs,
+                        'mfe_rs':        mfe_rs,
+                        'slippage_rs':   slippage_rs,
                     },
                     lesson, brain_result.get('outcome', ''),
                     pnl_rs, today_pnl,

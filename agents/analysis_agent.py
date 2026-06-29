@@ -304,8 +304,6 @@ class AnalysisAgent(threading.Thread):
             if mins_since < 30:
                 return
 
-        self.last_signal_time = now
-
         # Publish signal
         STATE.update('signals', {
             'analysis_ready': True,
@@ -326,6 +324,11 @@ class AnalysisAgent(threading.Thread):
                 'reasons':     reasons,
                 'time':        now.strftime('%H:%M:%S')
             }
+        })
+
+        from src.trade_analytics import log_funnel
+        log_funnel('setup_seen', {
+            'score': score, 'trend': bias, 'session': session,
         })
 
         print(f"📊 Signal: {bias} score={score} at {price:,.0f} | {now.strftime('%H:%M')}")

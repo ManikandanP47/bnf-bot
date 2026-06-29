@@ -102,12 +102,18 @@ def format_paper_exit(trade: dict, lesson: str, outcome: str,
     from src.brain_metrics import compute_paper_confidence
     conf  = compute_paper_confidence()
     emoji = '🟢 WIN' if pnl_rs >= 0 else '🔴 LOSS'
+    mae = trade.get('mae_rs', 0)
+    mfe = trade.get('mfe_rs', 0)
+    slip = trade.get('slippage_rs', 0)
+    mae_line = f"  MAE ₹{mae:,.0f} | MFE ₹{mfe:,.0f}\n" if mae or mfe else ''
+    slip_line = f"  Slippage (paper): −₹{slip:,}\n" if slip else ''
     return (
         f"{emoji} *PAPER TRADE CLOSED* (#{trade.get('learning_id', '?')})\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"Option: {trade.get('name', '')}\n"
         f"Entry ₹{trade.get('entry_price', 0)} → Exit ₹{trade.get('exit_prem', 0):.0f}\n"
         f"P&L: *₹{pnl_rs:,.0f}* ({trade.get('pnl_pct', 0):+.1f}%)\n"
+        f"{mae_line}{slip_line}"
         f"Reason: {trade.get('exit_reason', '')}\n\n"
         f"🧠 *Brain learned:*\n  {lesson}\n\n"
         f"📊 *Scoreboard*\n"
@@ -127,9 +133,14 @@ def format_daily_paper_report() -> str:
     open_t = get_open_paper_trade()
     stats  = get_brain_stats()
     from src.brain_metrics import compute_paper_confidence, assess_live_readiness
+    from src.trade_analytics import (
+        compute_drawdown, compute_r_stats, format_funnel_report, session_expectancy,
+    )
     conf   = compute_paper_confidence()
     ready  = assess_live_readiness()
     s      = conf['stats']
+    dd     = compute_drawdown()
+    r_st   = compute_r_stats()
 
     lines  = [
         f"📓 *Daily Paper Journal — {now.strftime('%d %b %Y')}*",
@@ -177,8 +188,18 @@ def format_daily_paper_report() -> str:
         f"  Target-hit rate: {s['efficiency_pct']}%",
         f"  Profit factor: {s['profit_factor']}",
         f"  Paper confidence: *{conf['score']}/100* ({conf['grade']})",
+        f"  Max drawdown: ₹{dd['max_drawdown']:,} | +1R rate: {r_st['pct_reach_1r']}%",
         "",
         f"🎯 *Live readiness:* {ready['reason']}",
+        "",
+        format_funnel_report(),
+    ]
+    sess = session_expectancy()
+    if sess:
+        lines += ["", "*Session expectancy:*"]
+        for name, v in sess.items():
+            lines.append(f"  {name}: ₹{v['expectancy']}/trade ({v['win_rate']}% WR)")
+    lines += [
         "",
         "_Review each trade above — you learn, brain learns_ 🤝",
     ]
