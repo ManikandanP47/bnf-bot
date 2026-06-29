@@ -380,7 +380,7 @@ class TraderBrain:
         # Avoid hours (need ≥5 samples, wr < 35%)
         hour_stats = defaultdict(lambda: {'w':0,'t':0})
         for r in rows:
-            h = r[6]
+            h = r[7]  # hour column
             hour_stats[h]['t'] += 1
             if r[23] == 'WIN': hour_stats[h]['w'] += 1
         avoid_hours = [h for h, v in hour_stats.items()
@@ -396,8 +396,8 @@ class TraderBrain:
         # Best session
         sess_stats = defaultdict(lambda: {'w':0,'t':0})
         for r in rows:
-            sess_stats[r[5]]['t'] += 1
-            if r[23] == 'WIN': sess_stats[r[5]]['w'] += 1
+            sess_stats[r[6]]['t'] += 1  # session column
+            if r[23] == 'WIN': sess_stats[r[6]]['w'] += 1
         best_sess = max(sess_stats,
                         key=lambda s: sess_stats[s]['w']/max(sess_stats[s]['t'],1),
                         default='')
@@ -529,13 +529,6 @@ class LearningAgent(threading.Thread):
         while STATE.get('system.running'):
             try:
                 self._push_to_state()
-
-                now = datetime.now(IST)
-                if (now.weekday() == 6 and now.hour == 20
-                        and now.minute < 5 and last_weekly != now.day):
-                    last_weekly = now.day
-                    self.msg.send(self.brain.weekly_report())
-
             except Exception as e:
                 STATE.add_error(f"Learning Agent: {str(e)[:60]}")
             time.sleep(300)

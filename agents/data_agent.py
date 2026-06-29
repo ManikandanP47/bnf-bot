@@ -204,6 +204,21 @@ class DataAgent(threading.Thread):
         c5  = self.b5.get_candles()
         c15 = self.b15.get_candles()
 
+        regime = 'TRENDING'
+        if len(c5) >= 10:
+            closes = [c['close'] for c in c5]
+            highs  = [c['high'] for c in c5]
+            lows   = [c['low'] for c in c5]
+            day_range = max(highs) - min(lows)
+            avg_price = sum(closes) / len(closes)
+            if avg_price > 0 and day_range > 0:
+                range_pct = day_range / avg_price * 100
+                efficiency = abs(closes[-1] - closes[0]) / day_range
+                if range_pct < 0.4:
+                    regime = 'TIGHT_RANGE'
+                elif efficiency < 0.35:
+                    regime = 'RANGING'
+
         # Session
         t = now.time()
         if   t < dtime(9,15):  sess = 'PRE_MARKET'
@@ -222,6 +237,7 @@ class DataAgent(threading.Thread):
             'rsi_15m':      self._calc_rsi(c15, 14),  # 15-min RSI
             'atr':          self._calc_atr(c5),
             'session':      sess,
+            'regime':       regime,
             'candles_1m':   c1[-60:],
             'candles_5m':   c5[-50:],
             'candles_15m':  c15[-30:],  # NEW ✅

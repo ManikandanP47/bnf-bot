@@ -10,7 +10,7 @@ import pytz
 IST = pytz.timezone('Asia/Kolkata')
 
 MAX_DAILY_LOSS_RS   = float(os.getenv('MAX_DAILY_LOSS_RS', '5000'))
-MAX_WEEKLY_LOSS_RS  = float(os.getenv('MAX_WEEKLY_LOSS_RS', '10000'))
+MAX_WEEKLY_LOSS_RS  = float(os.getenv('MAX_WEEKLY_LOSS_RS', '5000'))
 LIVE_CAPITAL_RS     = float(os.getenv('LIVE_CAPITAL_RS', '5000'))
 MAX_LOT_SIZE        = int(os.getenv('MAX_LOT_SIZE', '1'))
 

@@ -69,12 +69,7 @@ class RiskAgent(threading.Thread):
         if event.get('caution'):
             warnings.append(event['reason'])
 
-        weekly_cap = check_weekly_loss_cap()
-        if weekly_cap['blocked']:
-            STATE.set('system.paused', True)
-            return {'approved': False, 'reason': weekly_cap['reason']}
-
-        # ── Lot cost vs ₹5k capital (auto-pick cheaper strike if needed) ──
+        # ── Manual pause check ────────────────────────────────────
         from src.capital_guard import check_trade_cost_vs_capital, LIVE_CAPITAL_RS
         from src.premium_feed import fetch_option_ltp
         from src.strike_picker import find_affordable_strike
@@ -285,6 +280,10 @@ class RiskAgent(threading.Thread):
         while STATE.get('system.running'):
             try:
                 if STATE.get('signals.analysis_ready'):
+                    if (STATE.get('signals.awaiting_confirmation')
+                            or STATE.get('signals.confirmation_sent')):
+                        time.sleep(10)
+                        continue
                     signal = STATE.get('signals.analysis')
 
                     if signal and not STATE.get('position.open'):
@@ -425,7 +424,10 @@ class ExecutionAgent(threading.Thread):
         from src.safety import run_safety_checks
         from src.trade_analytics import check_premium_sanity, check_liquidity
 
-        token = STATE.get('system.groww_token', '') or os.getenv('GROWW_ACCESS_TOKEN', '')
+        paper = os.getenv('PAPER_MODE', 'true').lower() == 'true'
+        token = '' if paper else (
+            STATE.get('system.groww_token', '') or os.getenv('GROWW_ACCESS_TOKEN', '')
+        )
         safety = run_safety_checks(
             groww_token=token,
             current_price=signal.get('price', 0),
@@ -871,6 +873,7 @@ class MonitorAgent(threading.Thread):
                 STATE.set('system.weekly_losses', new_losses)
 
                 if new_losses >= 2:
+                    STATE.set('system.paused', True)
                     self.messenger.send(
                         "🛑 *Circuit Breaker Triggered*\n\n"
                         "2 losses this week — bot auto-paused.\n"
@@ -954,14 +957,6 @@ class MonitorAgent(threading.Thread):
                     f"🛑 *Weekly loss cap reached* (₹{week_pnl:,.0f})\n"
                     f"Bot paused until Monday. Capital protected."
                 )
-
-            # Track weekly losses for circuit breaker
-            if pnl_rs < 0:
-                weekly_losses = STATE.get('system.weekly_losses', 0) + 1
-                STATE.set('system.weekly_losses', weekly_losses)
-            else:
-                # Win resets consecutive loss count
-                STATE.set('system.weekly_losses', 0)
 
             # Clear position
             STATE.update('position', {

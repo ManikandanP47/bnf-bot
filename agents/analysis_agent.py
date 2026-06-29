@@ -300,9 +300,14 @@ class AnalysisAgent(threading.Thread):
         # Prevent signal spam — max 1 signal per 30 min
         now = datetime.now(IST)
         if self.last_signal_time:
-            mins_since = (now - self.last_signal_time).seconds / 60
+            mins_since = (now - self.last_signal_time).total_seconds() / 60
             if mins_since < 30:
                 return
+
+        if STATE.get('position.open'):
+            return
+        if STATE.get('signals.awaiting_confirmation') or STATE.get('signals.confirmation_sent'):
+            return
 
         # Publish signal
         STATE.update('signals', {
@@ -331,6 +336,7 @@ class AnalysisAgent(threading.Thread):
             'score': score, 'trend': bias, 'session': session,
         })
 
+        self.last_signal_time = now
         print(f"📊 Signal: {bias} score={score} at {price:,.0f} | {now.strftime('%H:%M')}")
 
     def run(self):
