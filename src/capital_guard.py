@@ -11,7 +11,27 @@ IST = pytz.timezone('Asia/Kolkata')
 
 MAX_DAILY_LOSS_RS   = float(os.getenv('MAX_DAILY_LOSS_RS', '5000'))
 MAX_WEEKLY_LOSS_RS  = float(os.getenv('MAX_WEEKLY_LOSS_RS', '10000'))
+LIVE_CAPITAL_RS     = float(os.getenv('LIVE_CAPITAL_RS', '5000'))
 MAX_LOT_SIZE        = int(os.getenv('MAX_LOT_SIZE', '1'))
+
+
+def assess_live_readiness() -> dict:
+    """Can we go live with ₹5k? Uses brain_metrics multi-gate check."""
+    from src.brain_metrics import assess_live_readiness as _assess
+    return _assess()
+
+
+def check_trade_cost_vs_capital(lot_cost: float) -> dict:
+    """Block trade if 1-lot cost exceeds 80% of live capital."""
+    if lot_cost > LIVE_CAPITAL_RS * 0.80:
+        return {
+            'blocked': True,
+            'reason': (
+                f'🛑 Lot cost ₹{lot_cost:,.0f} too high for '
+                f'₹{LIVE_CAPITAL_RS:,.0f} capital. Pick cheaper strike or add funds.'
+            ),
+        }
+    return {'blocked': False, 'reason': ''}
 
 
 def check_daily_loss_cap() -> dict:
@@ -75,6 +95,9 @@ def format_morning_brief() -> str:
     w_loss   = STATE.get('system.weekly_losses', 0)
     brain    = STATE.get('brain', {})
     stage    = brain.get('learning_stage', 'EARLY')
+    from src.brain_metrics import format_confidence_line, assess_live_readiness
+    conf_line = format_confidence_line()
+    ready     = assess_live_readiness()
 
     if zone.get('active'):
         dist = zone_distance_pct(price, zone) if price else None
@@ -121,5 +144,7 @@ def format_morning_brief() -> str:
         f"Today: {trades} trade(s) | {pnl_e} ₹{pnl:,.0f}\n"
         f"Week losses: {w_loss}/2 | Brain: {stage}\n"
         f"Daily loss cap: ₹{MAX_DAILY_LOSS_RS:,.0f}\n\n"
+        f"🧠 {conf_line}\n"
+        f"Live: {'✅ gates passed' if ready['ready'] else '❌ stay paper'} — /readiness\n\n"
         f"_Capital protection ON — quality over quantity_ 🛡️"
     )

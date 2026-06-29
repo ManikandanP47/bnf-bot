@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 JOURNAL = 'journal.json'
 
 
+from src.groww_symbols import groww_option_symbol
+
+
 class GrowwTrader:
 
     def __init__(self, token: str = ''):
@@ -40,20 +43,12 @@ class GrowwTrader:
 
     def get_contract_id(self, index: str, strike: int,
                         opt_type: str, expiry: str) -> str:
-        """
-        Build Groww contract ID for BankNifty option
-        Format: BANKNIFTY{YYMMDDD}{STRIKE}{CE/PE}
-        Example: BANKNIFTY25071058300CE
-
-        expiry format: '09 Jul 2026' → '250710'
-        """
+        """Groww FNO symbol e.g. NSE_BANKNIFTY26JUL58200CE"""
         try:
-            dt       = datetime.strptime(expiry, '%d %b %Y')
-            exp_code = dt.strftime('%y%m%d')  # e.g. 250710
-            return f"{index}{exp_code}{strike}{opt_type}"
+            return groww_option_symbol(index, strike, opt_type, expiry)
         except Exception as e:
             logger.error(f"Contract ID error: {e}")
-            return f"BANKNIFTY{strike}{opt_type}"
+            return f"NSE_{index}{strike}{opt_type}"
 
     def buy_option(self, index: str, strike: int,
                    opt_type: str, expiry: str,

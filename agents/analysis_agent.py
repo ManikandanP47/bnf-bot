@@ -316,6 +316,7 @@ class AnalysisAgent(threading.Thread):
                 'price':       price,
                 'session':     session,
                 'regime':      STATE.get('market.regime', 'TRENDING'),
+                'rsi':         rsi_5m,
                 'rsi_5m':      rsi_5m,
                 'rsi_1m':      rsi_1m,
                 'vwap':        vwap,

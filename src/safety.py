@@ -101,43 +101,64 @@ def check_trading_day() -> dict:
 # ─────────────────────────────────────────────────────────────────
 
 def check_groww_balance(groww_token: str,
-                         required_amount: float = 5000) -> dict:
+                         required_amount: float = 5000,
+                         fail_open: bool = False) -> dict:
     """
     Check if Groww F&O wallet has enough balance BEFORE placing order.
-    Never let order fail silently due to insufficient funds.
+    Live mode: fail closed if balance insufficient or API confirms ₹0.
     """
+    if not groww_token or groww_token.startswith('PAPER'):
+        return {
+            'available': False,
+            'balance':   0,
+            'required':  required_amount,
+            'sufficient': False,
+            'reason':    'No Groww token — add funds & TOTP credentials for live trading',
+        }
     try:
         headers = {
             'Authorization': f'Bearer {groww_token}',
             'Content-Type':  'application/json'
         }
-        # Groww funds API
         resp = requests.get(
             'https://groww.in/v1/api/user/fund',
             headers=headers,
             timeout=10
         )
         if resp.status_code == 200:
-            data            = resp.json()
-            available       = float(data.get('data', {})
-                                       .get('availableBalance', 0))
-            has_funds       = available >= required_amount
-
+            data      = resp.json()
+            available = float(data.get('data', {}).get('availableBalance', 0))
+            has_funds = available >= required_amount
             return {
-                'available': True,
-                'balance':   available,
-                'required':  required_amount,
+                'available':  True,
+                'balance':    available,
+                'required':   required_amount,
                 'sufficient': has_funds,
-                'reason':    f"Balance ₹{available:,.0f} {'✅' if has_funds else f'❌ Need ₹{required_amount:,.0f}'}"
+                'reason': (
+                    f"Groww F&O balance ₹{available:,.0f} ✅"
+                    if has_funds else
+                    f"❌ Insufficient balance: ₹{available:,.0f} available, "
+                    f"need ₹{required_amount:,.0f}. Add funds to Groww wallet."
+                ),
+            }
+        if resp.status_code == 401:
+            return {
+                'available': False, 'balance': 0, 'required': required_amount,
+                'sufficient': False,
+                'reason': 'Groww token expired — bot will auto-refresh',
             }
     except Exception as e:
-        pass
-
-    # If API fails — proceed with caution (don't block trading)
+        if fail_open:
+            return {
+                'available': False, 'sufficient': True,
+                'reason': f'Balance check unavailable ({str(e)[:30]})',
+            }
     return {
         'available': False,
-        'sufficient': True,  # Assume sufficient if can't check
-        'reason': 'Balance check unavailable — proceeding'
+        'balance':   0,
+        'required':  required_amount,
+        'sufficient': False,
+        'reason':    '❌ Could not verify Groww balance — not placing live order',
     }
 
 

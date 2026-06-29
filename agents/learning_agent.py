@@ -168,6 +168,7 @@ class TraderBrain:
                   outcome, reason, hold_min, mistake, lesson, tid))
 
         self._update_patterns(tid, outcome, pnl_rs)
+        return {'outcome': outcome, 'lesson': lesson, 'mistake': mistake, 'pnl_rs': pnl_rs}
 
     def _classify(self, outcome, reason, data):
         if outcome == 'WIN':
@@ -394,12 +395,18 @@ class TraderBrain:
                              for p in top_p) or "  Still learning..."
         less_txt = '\n'.join(f"  {l[0]}" for l in lessons) or "  No lessons this week"
 
+        from src.brain_metrics import compute_paper_confidence, assess_live_readiness
+        conf  = compute_paper_confidence()
+        ready = assess_live_readiness()
+
         return (
             f"🧠 *Weekly Brain Report*\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 This Week: {len(week)} trades | "
             f"{w_wins}W | ₹{w_pnl:,}\n"
-            f"📊 All time:  {len(all_)} trades | {t_wr:.1f}% win rate\n\n"
+            f"📊 All time:  {len(all_)} trades | {t_wr:.1f}% win rate\n"
+            f"🎯 Paper confidence: {conf['score']}/100 ({conf['grade']})\n"
+            f"🛡️ Live readiness: {ready['reason']}\n\n"
             f"🎯 Adaptive Settings:\n"
             f"  Stage: {thresh['learning_stage']}\n"
             f"  Min score: {thresh['min_score']}\n"

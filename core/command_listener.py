@@ -131,6 +131,9 @@ class CommandListener(threading.Thread):
             agent_lines  = '\n'.join(
                 f"  {k.capitalize()}: {v}" for k, v in agents.items()
             )
+            from src.capital_guard import assess_live_readiness
+            live_chk = assess_live_readiness()
+            brain    = STATE.get('brain', {})
             return (
                 f"📊 *Bot Status — {now}*\n"
                 f"━━━━━━━━━━━━━━━━━\n"
@@ -141,7 +144,9 @@ class CommandListener(threading.Thread):
                 f"*Position:* {'📌 ' + pos_name if pos_open else 'None'}\n"
                 f"*Zone:* {'✅ ' + f'{zone_low:,.0f}–{zone_high:,.0f}' if zone_active else 'None'}\n\n"
                 f"*Today:* {trades_today} trade(s) | {pnl_emoji} ₹{today_pnl:,.0f}\n"
-                f"*Week losses:* {weekly_loss}/2"
+                f"*Week losses:* {weekly_loss}/2\n"
+                f"*Brain:* {brain.get('learning_stage', 'EARLY')}\n\n"
+                f"*Live readiness:* {live_chk['reason']}"
             )
 
         elif cmd == '/pnl':
@@ -197,6 +202,14 @@ class CommandListener(threading.Thread):
         elif cmd == '/skip':
             return self._skip_trade()
 
+        elif cmd == '/journal':
+            from src.paper_journal import format_journal_command
+            return format_journal_command()
+
+        elif cmd == '/readiness':
+            from src.brain_metrics import format_readiness_report
+            return format_readiness_report()
+
         elif cmd == '/help':
             return (
                 "🤖 *BNF Bot Commands*\n"
@@ -205,12 +218,14 @@ class CommandListener(threading.Thread):
                 "/resume  — Resume trading\n"
                 "/execute — Confirm pending trade\n"
                 "/skip    — Skip pending trade\n"
+                "/journal — Today's paper trades + brain\n"
+                "/readiness — Live gate checklist (8 gates)\n"
                 "/stop    — Emergency stop\n"
                 "/status  — All agents + position\n"
                 "/pnl     — Today's P&L\n"
                 "/zone    — Tonight's zone\n"
                 "/help    — This message\n\n"
-                "_Paper mode: you approve each trade before entry_ 📝"
+                "_Paper first — all gates green before live ₹5k_ 🛡️"
             )
 
         return f"❓ Unknown: `{cmd}`\nType /help for commands."

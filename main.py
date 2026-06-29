@@ -43,6 +43,7 @@ from src.scanner            import analyse
 from src.zone_manager       import save_zone, load_zone, apply_zone_to_state
 from src.premarket          import run_premarket_scan, format_premarket_telegram
 from src.capital_guard      import format_morning_brief
+from src.paper_journal      import format_daily_paper_report
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -97,6 +98,7 @@ def scheduler(messenger: Messenger):
     last_weekly    = -1
     last_day_reset = -1
     last_morning   = -1
+    last_daily     = -1
 
     while STATE.get('system.running'):
         try:
@@ -163,6 +165,11 @@ def scheduler(messenger: Messenger):
                     messenger.send(cb['reason'])
                     STATE.set('system.market_open', False)
 
+            # 3:35 PM — daily paper journal (profit/loss + brain learning)
+            if hour == 15 and 34 <= minute <= 38 and last_daily != now.day:
+                last_daily = now.day
+                messenger.send(format_daily_paper_report())
+
             if hour == 20 and 13 <= minute <= 23 and last_evening != now.day:
                 last_evening = now.day
                 print("🌙 Evening scan...")
@@ -223,6 +230,18 @@ def main():
     print(f"   Time: {datetime.now(IST).strftime('%d %b %Y %I:%M %p IST')}")
     print("="*55)
     msg = Messenger()
+    if not paper:
+        from src.brain_metrics import assess_live_readiness
+        ready = assess_live_readiness()
+        if not ready['ready']:
+            print(f"⚠️ LIVE mode but not ready: {ready['reason']}")
+            msg.send(
+                f"⚠️ *Live mode ON but gates not passed*\n\n"
+                f"{ready['reason']}\n\n"
+                f"Orders will be *blocked* until paper proves edge.\n"
+                f"Set `PAPER_MODE=true` or complete paper period.\n"
+                f"Type /readiness for checklist."
+            )
     print("\n🔍 Startup checks...")
     reconcile_on_startup(msg)
     load_zone_on_startup(msg)
@@ -253,8 +272,10 @@ def main():
         f"/skip — Skip trade\n"
         f"/status — Bot health\n"
         f"/pnl — Today P&L\n"
-        f"/zone — Saved zone\n\n"
-        f"_You approve each trade before entry_ 🎯"
+        f"/zone — Saved zone\n"
+        f"/journal — Today's paper trades\n"
+        f"/readiness — Live gate checklist\n\n"
+        f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")
     now = datetime.now(IST)
