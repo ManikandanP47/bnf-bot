@@ -1,6 +1,6 @@
 # Deploy to DigitalOcean Server
 
-## One-time setup on your server (64.227.177.10)
+## One-time setup on your server
 
 SSH into server and run these commands:
 
@@ -22,37 +22,69 @@ python3 -m venv venv
 
 # 5. Create .env file with your credentials
 nano .env
-# Paste the .env contents here
+# Or copy from Mac: scp ~/Downloads/bnf-bot-main/.env root@YOUR_IP:~/bnf-bot/.env
 
 # 6. Test Groww + Telegram
 ./venv/bin/python test_groww_all_apis.py
-
-# 7. Run bot (paper mode first)
-./venv/bin/python main.py
-
-# 8. Run forever (even after logout)
-pkill -f "main.py" 2>/dev/null
-nohup ./venv/bin/python main.py >> bot.log 2>&1 &
-echo "Bot running in background"
-tail -f bot.log
+./venv/bin/python test_telegram.py
 ```
 
-## Check if bot is running
+## Run with systemd (recommended)
+
+One instance only, auto-restart on crash, starts after reboot.
+
 ```bash
-ps aux | grep main.py
-tail -f bot.log
+cd ~/bnf-bot
+git pull origin main
+chmod +x deploy/install-systemd.sh deploy/uninstall-systemd.sh
+sudo ./deploy/install-systemd.sh
 ```
 
-## Update after git pull
+The installer will:
+- Register `bnf-bot.service`
+- Kill any old `nohup` / duplicate `main.py` processes
+- Start the bot
+
+### Daily commands
+
+```bash
+systemctl status bnf-bot      # running?
+systemctl restart bnf-bot     # after git pull or .env change
+systemctl stop bnf-bot        # stop trading
+journalctl -u bnf-bot -f      # live logs (systemd)
+tail -f ~/bnf-bot/bot.log     # same output in bot.log
+```
+
+### Update after git pull
+
 ```bash
 cd ~/bnf-bot
 git pull origin main
 ./venv/bin/pip install -r requirements.txt
-pkill -f "main.py" 2>/dev/null
-nohup ./venv/bin/python main.py >> bot.log 2>&1 &
+sudo systemctl restart bnf-bot
 ```
 
-## Stop bot
+### Remove systemd service
+
 ```bash
-pkill -f "main.py"
+sudo ./deploy/uninstall-systemd.sh
 ```
+
+## Manual run (not recommended)
+
+Only use if you are not using systemd:
+
+```bash
+# Check nothing is already running first!
+ps aux | grep main.py
+
+pkill -f "main.py" 2>/dev/null
+nohup ./venv/bin/python main.py >> bot.log 2>&1 &
+tail -f bot.log
+```
+
+**Never** run `nohup` while `systemctl status bnf-bot` shows active — you will get duplicate bots.
+
+## Telegram commands
+
+`/status` `/journal` `/readiness` `/funnel` `/execute` `/skip` `/pause` `/resume`

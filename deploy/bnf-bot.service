@@ -1,0 +1,28 @@
+[Unit]
+Description=BankNifty Multi-Agent Trading Bot (Groww + Telegram)
+Documentation=https://github.com/ManikandanP47/bnf-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@BOT_USER@
+WorkingDirectory=@BOT_DIR@
+ExecStart=@BOT_DIR@/venv/bin/python main.py
+Restart=on-failure
+RestartSec=20
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Same log file as manual nohup runs
+StandardOutput=append:@BOT_DIR@/bot.log
+StandardError=append:@BOT_DIR@/bot.log
+
+Environment=PYTHONUNBUFFERED=1
+
+# Only one instance — systemd rejects a second start while this is active
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
