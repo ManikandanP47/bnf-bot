@@ -166,6 +166,14 @@ def _build_shadow_params(signal: dict) -> dict:
     }
 
 
+def _notify_telegram(msg: str):
+    try:
+        from core.messenger import Messenger
+        Messenger().send(msg)
+    except Exception:
+        pass
+
+
 def try_open_shadow_trade(signal: dict) -> dict:
     """
     Open a no-money virtual trade when analysis fires.
@@ -235,6 +243,14 @@ def try_open_shadow_trade(signal: dict) -> dict:
     sid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
 
+    _notify_telegram(
+        f"🎓 *Shadow drill #{sid} opened*\n"
+        f"{params['name']} @ ₹{params['premium']}\n"
+        f"Score {signal.get('score', 0)} | {bias} | {signal.get('session', '')}\n"
+        f"📋 {prediction[:100]}\n"
+        f"_Virtual trade — tracking until target/SL/EOD_"
+    )
+
     return {'opened': True, 'id': sid, 'name': params['name'], 'rag': rag_notes}
 
 
@@ -299,6 +315,13 @@ def tick_shadow_trades():
         """, (
             now.strftime('%H:%M'), price, est, pnl, outcome, reason, lesson, sid,
         ))
+
+        emoji = '🟢' if outcome == 'WIN' else '🔴'
+        _notify_telegram(
+            f"{emoji} *Shadow #{sid} closed* — {outcome}\n"
+            f"P&L: ₹{pnl:,} | {reason}\n"
+            f"🧠 {lesson[:120]}"
+        )
 
         from src.market_rag import ingest_trade_lesson
         from src.market_context import build_market_context

@@ -169,6 +169,7 @@ def scheduler(messenger: Messenger):
     last_daily     = -1
     last_skip      = -1
     last_readiness = -1
+    last_pulse_hour = -1
 
     while STATE.get('system.running'):
         try:
@@ -252,6 +253,18 @@ def scheduler(messenger: Messenger):
                         f"📚 *Skip learning updated* — {n} skipped setup(s) resolved at EOD.\n"
                         f"Type /funnel to see if your skips were good."
                     )
+
+            # Market pulse — regular "bot is alive" check-ins (10 AM, 12 PM, 2 PM)
+            try:
+                from src.market_pulse import PULSE_ENABLED, should_send_pulse, format_market_pulse
+                from src.safety import check_trading_day
+                if (PULSE_ENABLED and 9 <= hour <= 15
+                        and check_trading_day().get('trade')
+                        and should_send_pulse(hour, minute, last_pulse_hour)):
+                    messenger.send(format_market_pulse())
+                    last_pulse_hour = hour
+            except Exception:
+                pass
 
             from src.safety import update_heartbeat
             if 9 <= hour <= 16:
