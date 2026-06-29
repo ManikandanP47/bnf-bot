@@ -1,0 +1,10 @@
+python-dotenv>=1.0.0
+pytz>=2024.1
+requests>=2.31.0
+yfinance>=0.2.36
+pandas>=2.0.0
+numpy>=1.24.0
+growwapi>=1.0.0
+pyotp>=2.9.0
+websocket-client>=1.7.0
+nsepython>=1.0.0

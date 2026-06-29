@@ -1,0 +1,8 @@
+# Credentials — NEVER commit these
+.env
+*.db
+*.json
+*.log
+__pycache__/
+*.pyc
+.DS_Store
