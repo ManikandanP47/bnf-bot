@@ -1,152 +1,154 @@
+#!/usr/bin/env python3
 """
-Live API Test — Run this on 64.227.177.10
-Tests Groww from the whitelisted IP
-Sends results to Telegram
+Quick live-server smoke test (DigitalOcean / production).
+Uses the same Groww symbol as the running bot: NSE_BANKNIFTY
+
+Run: ./venv/bin/python test_live_server.py
 """
 
-import os, sys, time, warnings
-warnings.filterwarnings('ignore')
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
+import os
+import socket
+import sys
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import requests
+PASS = 0
+FAIL = 0
+LINES = []
 
-TOKEN   = os.getenv('TELEGRAM_BOT_TOKEN')
-CHAT    = os.getenv('TELEGRAM_CHAT_ID')
+# Same symbol as agents/data_agent.py — NOT "NIFTY BANK" or "NSE:NIFTY BANK"
+BANKNIFTY_SYMBOL = "NSE_BANKNIFTY"
 
-def tg(msg):
+
+def record(ok: bool, label: str, detail: str = ""):
+    global PASS, FAIL
+    if ok:
+        PASS += 1
+        mark = "✅"
+    else:
+        FAIL += 1
+        mark = "❌"
+    line = f"{mark} {label}" + (f": {detail}" if detail else "")
+    LINES.append(line)
+    print(f"   {mark} {label}" + (f": {detail}" if detail else ""))
+
+
+def main():
+    print("\n1. TOTP...")
     try:
-        requests.post(
-            f'https://api.telegram.org/bot{TOKEN}/sendMessage',
-            json={'chat_id': CHAT, 'text': msg, 'parse_mode': 'Markdown'},
-            timeout=10
-        )
-    except: pass
+        import pyotp
+        secret = os.getenv("GROWW_TOTP_SECRET", "")
+        if not secret:
+            raise ValueError("GROWW_TOTP_SECRET missing")
+        code = pyotp.TOTP(secret).now()
+        record(True, "TOTP", code)
+    except Exception as e:
+        record(False, "TOTP", str(e)[:80])
+        code = None
 
-results = []
-tg("🧪 *Live Server Test Started*\nTesting from 64.227.177.10...")
+    print("\n2. Groww Auth...")
+    token = None
+    try:
+        from growwapi import GrowwAPI
+        api_key = os.getenv("GROWW_TOTP_TOKEN", "")
+        if not code or not api_key:
+            raise ValueError("missing TOTP or GROWW_TOTP_TOKEN")
+        token = GrowwAPI.get_access_token(api_key=api_key, totp=code)
+        if not token:
+            raise ValueError("empty access token")
+        record(True, "Auth", f"Token: {token[:28]}...")
+    except Exception as e:
+        record(False, "Auth", str(e)[:80])
 
-# Test 1: TOTP
-print("\n1. TOTP...")
-try:
-    import pyotp
-    secret = os.getenv('GROWW_TOTP_SECRET','')
-    totp   = pyotp.TOTP(secret)
-    code   = totp.now()
-    results.append(f"✅ TOTP: {code}")
-    print(f"   ✅ {code}")
-except Exception as e:
-    results.append(f"❌ TOTP: {e}")
+    print("\n3. BankNifty live price...")
+    price = 0
+    if token:
+        try:
+            from src.groww_client import get_groww_client
+            groww = get_groww_client(token)
+            q = groww.get_ltp(
+                exchange_trading_symbols=(BANKNIFTY_SYMBOL,),
+                segment=groww.SEGMENT_CASH,
+            )
+            if isinstance(q, dict):
+                if BANKNIFTY_SYMBOL in q:
+                    price = float(q[BANKNIFTY_SYMBOL])
+                elif q.get("ltps"):
+                    price = float(q["ltps"][0].get("ltp", 0) or 0)
+            if price > 0:
+                record(True, "BankNifty price", f"₹{price:,.2f} ({BANKNIFTY_SYMBOL})")
+            else:
+                record(False, "BankNifty price", f"empty response: {str(q)[:80]}")
+        except Exception as e:
+            record(False, "BankNifty price", str(e)[:80])
+    else:
+        record(False, "BankNifty price", "no token")
 
-# Test 2: Groww Auth
-print("\n2. Groww Auth...")
-LIVE_TOKEN = None
-try:
-    from growwapi import GrowwAPI
-    import pyotp
-    secret     = os.getenv('GROWW_TOTP_SECRET','')
-    totp_token = os.getenv('GROWW_TOTP_TOKEN','')
-    code       = pyotp.TOTP(secret).now()
-    LIVE_TOKEN = GrowwAPI.get_access_token(api_key=totp_token, totp=code)
-    results.append(f"✅ Auth: token obtained")
-    print(f"   ✅ Token: {str(LIVE_TOKEN)[:30]}...")
-except Exception as e:
-    results.append(f"❌ Auth: {e}")
-    print(f"   ❌ {e}")
-    LIVE_TOKEN = os.getenv('GROWW_ACCESS_TOKEN','')
+    print("\n4. F&O margin...")
+    if token:
+        try:
+            from src.groww_client import get_groww_client
+            groww = get_groww_client(token)
+            margin = groww.get_available_margin_details()
+            record(True, "Margin", str(margin)[:60])
+        except Exception as e:
+            record(False, "Margin", str(e)[:80])
+    else:
+        record(False, "Margin", "no token")
 
-# Test 3: BankNifty Live Price — CORRECT SYMBOL
-print("\n3. BankNifty live price...")
-try:
-    from growwapi import GrowwAPI
-    groww = GrowwAPI(LIVE_TOKEN)
-    # Correct: trading_symbol is BANKNIFTY not NIFTY BANK
-    ltp = groww.get_ltp(
-        exchange_trading_symbols=("NSE:BANKNIFTY",),
-        segment="CASH"
+    print("\n5. Current positions...")
+    if token:
+        try:
+            from src.groww_client import get_groww_client
+            groww = get_groww_client(token)
+            pos = groww.get_positions_for_user(segment=groww.SEGMENT_FNO)
+            n = len((pos or {}).get("positions", []))
+            record(True, "Positions", f"{n} open")
+        except Exception as e:
+            record(False, "Positions", str(e)[:80])
+    else:
+        record(False, "Positions", "no token")
+
+    print("\n6. Paper trade simulation...")
+    try:
+        from src.trade_filters import get_dynamic_sl_target
+        dyn = get_dynamic_sl_target(265)
+        record(True, "Paper trade", f"SL: Rs{dyn['sl_prem']} | Target: Rs{dyn['tgt_prem']}")
+    except Exception as e:
+        record(False, "Paper trade", str(e)[:80])
+
+    total = PASS + FAIL
+    host = socket.gethostname()
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        ip = "unknown"
+
+    summary = (
+        f"🧪 *Live Server Test Complete*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Server: {ip} ({host})\n"
+        f"Result: {PASS}/{total} passed\n\n"
+        + "\n".join(LINES)
     )
-    price = (ltp.get("NSE:BANKNIFTY") or {}).get("ltp", 0)
-    if price == 0:
-        # Try alternate key
-        for k, v in ltp.items():
-            if isinstance(v, dict) and v.get("ltp"):
-                price = v["ltp"]
-                break
-        if price == 0:
-            price = str(ltp)[:80]
-    results.append(f"✅ BankNifty: ₹{price}")
-    print(f"   ✅ Price: {price}")
-except Exception as e:
-    results.append(f"❌ BankNifty price: {e}")
-    print(f"   ❌ {e}")
+    if FAIL:
+        summary += "\n\n⚠️ Some issues found"
+    else:
+        summary += "\n\n🎉 All checks passed — bot symbol OK"
 
-# Test 3b: Try get_quote as fallback
-print("\n3b. BankNifty get_quote fallback...")
-try:
-    from growwapi import GrowwAPI
-    groww = GrowwAPI(LIVE_TOKEN)
-    q = groww.get_quote(
-        trading_symbol="BANKNIFTY",
-        exchange="NSE",
-        segment="CASH"
-    )
-    print(f"   ✅ Quote: {str(q)[:80]}")
-    results.append(f"✅ Quote: {str(q)[:40]}")
-except Exception as e:
-    print(f"   ⚠️ {e}")
+    print("\n" + "=" * 50)
+    print(f"RESULT: {PASS}/{total} passed")
+    print(summary.replace("*", ""))
 
-# Test 4: F&O Margin
-print("\n4. F&O margin...")
-try:
-    from growwapi import GrowwAPI
-    groww  = GrowwAPI(LIVE_TOKEN)
-    margin = groww.get_available_margin_details()
-    results.append(f"✅ Margin: {str(margin)[:50]}")
-    print(f"   ✅ Margin: {str(margin)[:60]}")
-except Exception as e:
-    results.append(f"❌ Margin: {e}")
-    print(f"   ❌ {e}")
+    try:
+        from core.messenger import Messenger
+        Messenger().send(summary)
+    except Exception:
+        pass
 
-# Test 5: Positions
-print("\n5. Current positions...")
-try:
-    from growwapi import GrowwAPI
-    groww = GrowwAPI(LIVE_TOKEN)
-    pos   = groww.get_positions_for_user(segment="FNO")
-    count = len(pos.get('positions',[]) if isinstance(pos,dict) else [])
-    results.append(f"✅ Positions: {count} open")
-    print(f"   ✅ {count} open positions")
-except Exception as e:
-    results.append(f"❌ Positions: {e}")
-    print(f"   ❌ {e}")
+    return 0 if FAIL == 0 else 1
 
-# Test 6: Paper trade simulation
-print("\n6. Paper trade simulation...")
-try:
-    from src.trade_filters import get_dynamic_sl_target, get_partial_exit_levels
-    dyn = get_dynamic_sl_target(265)
-    pe  = get_partial_exit_levels(265)
-    results.append(f"✅ Paper trade: SL Rs{dyn['sl_prem']} Tgt Rs{dyn['tgt_prem']}")
-    print(f"   ✅ SL: Rs{dyn['sl_prem']} | Target: Rs{dyn['tgt_prem']}")
-except Exception as e:
-    results.append(f"❌ Paper trade: {e}")
 
-# Send full results to Telegram
-passed = sum(1 for r in results if r.startswith('✅'))
-report = (
-    f"🧪 *Live Server Test Complete*\n"
-    f"━━━━━━━━━━━━━━━━━━━━━\n"
-    f"Server: 64.227.177.10\n"
-    f"Result: {passed}/{len(results)} passed\n\n"
-)
-for r in results:
-    report += f"{r}\n"
-
-status = '✅ BOT READY FOR TRADING' if passed >= 5 else '⚠️ Some issues found'
-report += f"\n{status}"
-tg(report)
-print(f"\n{'='*50}")
-print(f"RESULT: {passed}/{len(results)} passed")
-print(report)
+if __name__ == "__main__":
+    sys.exit(main())
