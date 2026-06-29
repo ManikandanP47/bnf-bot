@@ -124,20 +124,9 @@ class RiskAgent(threading.Thread):
             warnings.append("⚠️ Ranging market — proceed carefully")
 
         # ── Global market check ───────────────────────────────────
-        try:
-            import yfinance as yf
-            sp500 = yf.Ticker('^GSPC').history(period='3d',interval='1d').dropna()
-            if len(sp500) >= 2:
-                sp_move = (float(sp500['Close'].iloc[-1]) -
-                           float(sp500['Close'].iloc[-2])) / \
-                           float(sp500['Close'].iloc[-2]) * 100
-                if trend == 'BULLISH' and sp_move <= -1.5:
-                    return {'approved': False,
-                            'reason': f"S&P500 fell {sp_move:.1f}% — global headwind"}
-                if sp_move >= 1.0 and trend == 'BULLISH':
-                    reasons.append(f"✅ S&P500 +{sp_move:.1f}% — global tailwind")
-        except:
-            pass
+        # Skip S&P500 check - using Groww API only for consistency
+        # Removed yfinance dependency to reduce external calls
+        pass
 
         # ── After 2 PM no new entries ─────────────────────────────
         if datetime.now(IST).time() >= dtime(14, 0):
@@ -250,10 +239,13 @@ class ExecutionAgent(threading.Thread):
                 'paper':    True
             }
         # Live Groww execution
-        token = os.getenv('GROWW_ACCESS_TOKEN', '')
+        # Try to use fresh TOTP token first, fallback to env var
+        token = STATE.get('system.groww_token', '')
+        if not token:
+            token = os.getenv('GROWW_ACCESS_TOKEN', '')
         try:
             from src.groww_trader import GrowwTrader
-            trader = GrowwTrader()
+            trader = GrowwTrader(token)
 
             # Pre-flight: warn if balance check unavailable
             from src.safety import check_groww_balance
@@ -274,6 +266,35 @@ class ExecutionAgent(threading.Thread):
                 lots=1
             )
         except Exception as e:
+            error_str = str(e).lower()
+            # If token expired, refresh and retry once
+            if 'auth' in error_str or 'expired' in error_str or 'invalid' in error_str:
+                print(f"🔄 Token expired during order: {str(e)[:40]}")
+                # Refresh token
+                try:
+                    from agents.data_agent import DataAgent
+                    data = DataAgent()
+                    fresh_token = data.get_groww_token()
+                    STATE.set('system.groww_token', fresh_token)
+                    
+                    # Retry with fresh token
+                    from src.groww_trader import GrowwTrader
+                    trader = GrowwTrader(fresh_token)
+                    result = trader.buy_option(
+                        'BANKNIFTY',
+                        params['strike'],
+                        params['opt_type'],
+                        params['expiry'],
+                        params['sl_prem'],
+                        params['tgt_prem'],
+                        lots=1
+                    )
+                    if result.get('success'):
+                        print(f"✅ Order placed after token refresh")
+                        return result
+                except:
+                    pass
+            
             return {'success': False, 'error': str(e)}
 
     def run(self):

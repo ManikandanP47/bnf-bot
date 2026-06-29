@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 from core.shared_state import STATE
 IST = pytz.timezone('Asia/Kolkata')
 
-BANKNIFTY_SYMBOL = "NIFTY BANK"
+BANKNIFTY_SYMBOL = "NSE_BANKNIFTY"
 
 
 class CandleBuilder:
@@ -86,49 +86,93 @@ class DataAgent(threading.Thread):
             token  = os.getenv('GROWW_TOTP_TOKEN',  '')
             if secret and token:
                 totp = pyotp.TOTP(secret).now()
-                return GrowwAPI.get_access_token(api_key=token, totp=totp)
+                access_token = GrowwAPI.get_access_token(api_key=token, totp=totp)
+                # Store in STATE so Execution Agent can use it
+                STATE.set('system.groww_token', access_token)
+                return access_token
         except Exception as e:
             STATE.add_error(f"Token: {str(e)[:40]}")
         return os.getenv('GROWW_ACCESS_TOKEN', '')
 
     def refresh_token_if_needed(self):
+        """Auto-refresh token at 8:45 AM and every 4 hours during market hours"""
         now = datetime.now(IST)
-        if now.hour == 8 and 44 <= now.minute <= 46:
+        hour = now.hour
+        
+        # Scheduled refresh: 8:45 AM + every 4 hours (12:45, 3:45 PM)
+        if (hour == 8 and 44 <= now.minute <= 46) or \
+           (hour == 12 and 44 <= now.minute <= 46) or \
+           (hour == 15 and 44 <= now.minute <= 46):
             self._token = self.get_groww_token()
-            STATE.set('system.token_status', 'REFRESHED_8:45AM')
-            print("🔑 Token refreshed at 8:45 AM")
+            STATE.set('system.token_status', f'REFRESHED_{hour}:45AM')
+            print(f"🔑 Token refreshed at {hour}:45")
 
     def get_live_price(self) -> dict:
-        """Get live BankNifty price from Groww"""
+        """Get live BankNifty price from Groww with auto-retry on token expiry"""
         try:
             if not self._token:
                 self._token = self.get_groww_token()
             from growwapi import GrowwAPI
             groww = GrowwAPI(self._token)
-            q     = groww.get_ltp(
-                trading_symbol = BANKNIFTY_SYMBOL,
-                exchange       = groww.EXCHANGE_NSE,
-                segment        = groww.SEGMENT_CASH
+            q = groww.get_ltp(
+                exchange_trading_symbols=(BANKNIFTY_SYMBOL,),
+                segment=groww.SEGMENT_CASH
             )
-            p = float(q.get('ltp', 0) or q.get('last_price', 0) or
-                      q.get('LTP', 0))
-            if p > 0:
-                return {'price': p, 'volume': 1000, 'source': 'GROWW'}
+            if q and isinstance(q, dict):
+                # Handle both response formats:
+                # Old: {'ltps': [{'ltp': 58214.3, ...}]}
+                # New: {'NSE_BANKNIFTY': 58214.3}
+                prices = q.get('ltps', [])
+                if prices:
+                    p = float(prices[0].get('ltp', 0) or prices[0].get('last_price', 0))
+                elif BANKNIFTY_SYMBOL in q:
+                    p = float(q[BANKNIFTY_SYMBOL])
+                else:
+                    p = 0
+                    
+                if p > 0:
+                    return {'price': p, 'volume': 1000, 'source': 'GROWW'}
         except Exception as e:
-            STATE.add_error(f"Price: {str(e)[:40]}")
+            # Detect authentication errors and refresh token automatically
+            error_str = str(e).lower()
+            if 'auth' in error_str or 'expired' in error_str or 'invalid' in error_str:
+                print(f"🔄 Token expired detected: {str(e)[:40]}")
+                self._token = self.get_groww_token()  # Auto-refresh
+                # Retry once with new token
+                try:
+                    from growwapi import GrowwAPI
+                    groww = GrowwAPI(self._token)
+                    q = groww.get_ltp(
+                        exchange_trading_symbols=(BANKNIFTY_SYMBOL,),
+                        segment=groww.SEGMENT_CASH
+                    )
+                    if q and isinstance(q, dict):
+                        prices = q.get('ltps', [])
+                        if prices:
+                            p = float(prices[0].get('ltp', 0) or prices[0].get('last_price', 0))
+                        elif BANKNIFTY_SYMBOL in q:
+                            p = float(q[BANKNIFTY_SYMBOL])
+                        else:
+                            p = 0
+                            
+                        if p > 0:
+                            print(f"✅ Recovered with fresh token")
+                            return {'price': p, 'volume': 1000, 'source': 'GROWW'}
+                except:
+                    pass
+            else:
+                STATE.add_error(f"Price: {str(e)[:40]}")
         return {}
 
     def get_price_yfinance(self) -> dict:
+        """Retry Groww with fresh token on timeout"""
         try:
-            import yfinance as yf
-            h = yf.Ticker('^NSEBANK').history(period='1d', interval='1m')
-            if len(h) > 0:
-                return {
-                    'price':  float(h['Close'].iloc[-1]),
-                    'volume': int(h['Volume'].iloc[-1]),
-                    'source': 'YFINANCE_FALLBACK'
-                }
-        except: pass
+            # Refresh token and retry Groww
+            self._token = self.get_groww_token()
+            if self._token:
+                return self.get_live_price()
+        except:
+            pass
         return {}
 
     def _calc_rsi(self, candles, period=14) -> float:

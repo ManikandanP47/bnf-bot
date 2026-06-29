@@ -24,8 +24,9 @@ JOURNAL = 'journal.json'
 
 class GrowwTrader:
 
-    def __init__(self):
-        self.token     = os.getenv('GROWW_ACCESS_TOKEN', '')
+    def __init__(self, token: str = ''):
+        # Accept token parameter (from TOTP) or use env var as fallback
+        self.token     = token or os.getenv('GROWW_ACCESS_TOKEN', '')
         self.paper     = os.getenv('PAPER_MODE', 'true').lower() == 'true'
         self.groww     = None
 
