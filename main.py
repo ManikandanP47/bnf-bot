@@ -410,6 +410,11 @@ def main():
     print("\n🔍 Startup checks...")
     reconcile_on_startup(msg)
     load_zone_on_startup(msg)
+    try:
+        from src.brain_metrics import hydrate_brain_daily_state
+        hydrate_brain_daily_state()
+    except Exception:
+        pass
     print("\n🚀 Starting agents...")
     agents = [
         DataAgent(),

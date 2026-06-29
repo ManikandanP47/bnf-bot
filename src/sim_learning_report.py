@@ -14,7 +14,7 @@ IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 LEARNING_PHASE_DAYS = int(os.getenv('LEARNING_PHASE_DAYS', '14'))
 MIN_SIM_GRAD_SAMPLES = int(os.getenv('MIN_SIM_GRAD_SAMPLES', '20'))
-MIN_SIM_GRAD_WR = float(os.getenv('MIN_SIM_GRAD_WR', '40'))
+MIN_SIM_GRAD_WR = float(os.getenv('MIN_SIM_GRAD_WR', os.getenv('SHADOW_MIN_WR', '40')))
 
 
 def _conn():

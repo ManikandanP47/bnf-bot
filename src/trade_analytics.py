@@ -243,6 +243,7 @@ def compute_drawdown() -> dict:
     rows = _conn().execute("""
         SELECT date, COALESCE(SUM(pnl_rs),0) as day_pnl
         FROM trades WHERE outcome IS NOT NULL
+          AND (mode IS NULL OR mode = 'paper')
         GROUP BY date ORDER BY date
     """).fetchall()
     if not rows:
@@ -275,6 +276,7 @@ def compute_r_stats() -> dict:
     rows = _conn().execute("""
         SELECT r_multiple, outcome FROM trades
         WHERE outcome IS NOT NULL AND r_multiple IS NOT NULL
+          AND (mode IS NULL OR mode = 'paper')
     """).fetchall()
     if not rows:
         return {'avg_r': 0, 'pct_reach_1r': 0, 'avg_r_wins': 0, 'avg_r_losses': 0}

@@ -11,6 +11,7 @@ import pytz
 
 IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
+SHADOW_MIN_WR = float(os.getenv('SHADOW_MIN_WR', os.getenv('MIN_SIM_GRAD_WR', '40')))
 
 MIN_PAPER_TRADES = int(os.getenv('MIN_PAPER_TRADES', '10'))
 MIN_PAPER_DAYS   = int(os.getenv('MIN_PAPER_DAYS', '14'))
@@ -26,21 +27,38 @@ def _conn():
     return BRAIN.conn
 
 
-def get_closed_trades(limit: int = None) -> list:
+def get_closed_trades(limit: int = None, paper_only: bool = True) -> list:
     cols = (
         "id, date, outcome, pnl_rs, pnl_pct, score, session, hour, "
         "exit_reason, mistake_type, lesson, bias, regime"
     )
+    where = "WHERE outcome IS NOT NULL"
+    if paper_only:
+        where += " AND (mode IS NULL OR mode = 'paper')"
     if limit:
         rows = _conn().execute(
-            f"SELECT {cols} FROM trades WHERE outcome IS NOT NULL "
-            f"ORDER BY id DESC LIMIT ?",
+            f"SELECT {cols} FROM trades {where} ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
         return list(reversed(rows))
     return _conn().execute(
-        f"SELECT {cols} FROM trades WHERE outcome IS NOT NULL ORDER BY id"
+        f"SELECT {cols} FROM trades {where} ORDER BY id"
     ).fetchall()
+
+
+def hydrate_brain_daily_state():
+    """Restore today's trade count + P&L after bot restart."""
+    from core.shared_state import STATE
+    today = datetime.now(IST).strftime('%Y-%m-%d')
+    try:
+        row = _conn().execute(
+            "SELECT trades, pnl FROM daily_pnl WHERE date=?", (today,)
+        ).fetchone()
+        if row:
+            STATE.set('brain.trades_today', int(row[0] or 0))
+            STATE.set('brain.today_pnl', float(row[1] or 0))
+    except Exception:
+        pass
 
 
 def _consecutive_losses(rows: list) -> int:
@@ -210,8 +228,8 @@ def assess_live_readiness() -> dict:
             gate('Learning phase', False,
                  f"{sh['days_left']}d left of {LEARNING_PHASE_DAYS} — shadow drills running")
         elif sh['shadow_total'] >= 5:
-            all_ok &= gate('Shadow drills', sh['shadow_win_rate'] >= 35,
-                            f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills)")
+            all_ok &= gate('Shadow drills', sh['shadow_win_rate'] >= SHADOW_MIN_WR,
+                            f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills, need {SHADOW_MIN_WR}%)")
     except Exception:
         pass
 

@@ -26,6 +26,7 @@ def get_today_trades() -> list:
                exit_reason, lesson, mistake_type, score, hour
         FROM trades
         WHERE date = ? AND outcome IS NOT NULL
+          AND (mode IS NULL OR mode = 'paper')
         ORDER BY id
     """, (today,)).fetchall()
     conn.close()

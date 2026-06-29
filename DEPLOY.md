@@ -70,6 +70,17 @@ sudo systemctl restart bnf-bot
 sudo ./deploy/uninstall-systemd.sh
 ```
 
+### Restore from backup
+
+```bash
+cd ~/bnf-bot
+cp backups/YYYY-MM-DD/trader_brain.db ./trader_brain.db
+cp -r backups/YYYY-MM-DD/models ./models   # if ML model was backed up
+sudo systemctl restart bnf-bot
+```
+
+Note: JWT token cache is **not** backed up (security). Bot re-authenticates via TOTP on restart.
+
 ## Manual run (not recommended)
 
 Only use if you are not using systemd:

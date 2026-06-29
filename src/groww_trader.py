@@ -7,6 +7,7 @@ Supports: Buy CE/PE, OCO (target + SL together), positions
 import os
 import json
 import logging
+import time
 from datetime import datetime
 import pytz
 
@@ -120,7 +121,25 @@ class GrowwTrader:
                 oco_ok = True
                 oco_id = oco_resp.get('groww_order_id', oco_resp.get('smart_order_id', ''))
             else:
-                logger.warning(f"OCO placement failed: {oco_resp}")
+                logger.warning(f"OCO placement failed: {oco_resp} — retrying once")
+                time.sleep(1.5)
+                oco_resp = self.groww.place_smart_order(
+                    trading_symbol=contract_id,
+                    exchange='NSE',
+                    smart_order_type='OCO',
+                    segment=self.groww.SEGMENT_FNO,
+                    quantity=qty,
+                    product='NRML',
+                    target_price=tgt_prem,
+                    target_order_type='LIMIT',
+                    stop_loss_price=sl_prem,
+                    stop_loss_order_type='MARKET',
+                )
+                if oco_resp.get('status') == 'success':
+                    oco_ok = True
+                    oco_id = oco_resp.get('groww_order_id', oco_resp.get('smart_order_id', ''))
+                else:
+                    logger.warning(f"OCO retry failed: {oco_resp}")
 
             trade = {
                 'name':        f"{index} {strike} {opt_type}",
@@ -235,18 +254,27 @@ class GrowwTrader:
         if not self.groww:
             return
         try:
-            if hasattr(self.groww, 'cancel_smart_order'):
-                orders = self.groww.get_order_list(
-                    segment=self.groww.SEGMENT_FNO
-                ) if hasattr(self.groww, 'get_order_list') else {}
-                for o in (orders.get('order_list', []) if isinstance(orders, dict) else []):
-                    sym = o.get('trading_symbol', o.get('tradingSymbol', ''))
-                    if sym == contract_id and o.get('status', '').upper() in (
-                        'OPEN', 'PENDING', 'TRIGGER_PENDING', 'ACTIVE'
-                    ):
-                        oid = o.get('groww_order_id', o.get('order_id', ''))
-                        if oid:
-                            self.groww.cancel_order(order_id=oid)
+            if not hasattr(self.groww, 'get_order_list'):
+                return
+            orders = self.groww.get_order_list(segment=self.groww.SEGMENT_FNO)
+            for o in (orders.get('order_list', []) if isinstance(orders, dict) else []):
+                sym = o.get('trading_symbol', o.get('tradingSymbol', ''))
+                if sym != contract_id:
+                    continue
+                status = (o.get('status') or '').upper()
+                if status not in ('OPEN', 'PENDING', 'TRIGGER_PENDING', 'ACTIVE'):
+                    continue
+                oid = o.get('groww_order_id', o.get('order_id', o.get('smart_order_id', '')))
+                if not oid:
+                    continue
+                otype = (o.get('order_type') or o.get('smart_order_type') or '').upper()
+                try:
+                    if ('SMART' in otype or 'OCO' in otype) and hasattr(self.groww, 'cancel_smart_order'):
+                        self.groww.cancel_smart_order(smart_order_id=oid)
+                    elif hasattr(self.groww, 'cancel_order'):
+                        self.groww.cancel_order(order_id=oid)
+                except Exception as ce:
+                    logger.warning(f"Cancel order {oid}: {ce}")
         except Exception as e:
             logger.warning(f"Cancel orders: {e}")
 
@@ -263,7 +291,8 @@ class GrowwTrader:
         try:
             resp = self.groww.get_positions(segment=self.groww.SEGMENT_FNO)
             return resp.get('position_list', [])
-        except:
+        except Exception as e:
+            logger.warning(f"get_positions: {e}")
             return []
 
     def get_pnl(self) -> float:
@@ -272,7 +301,8 @@ class GrowwTrader:
         try:
             positions = self.get_positions()
             return sum(float(p.get('pnl', 0)) for p in positions)
-        except:
+        except Exception as e:
+            logger.warning(f"get_pnl: {e}")
             return 0.0
 
     def _log(self, trade: dict):
@@ -286,6 +316,6 @@ class GrowwTrader:
             if os.path.exists(JOURNAL):
                 with open(JOURNAL) as f:
                     return json.load(f)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"read journal: {e}")
         return []

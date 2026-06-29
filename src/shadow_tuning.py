@@ -4,7 +4,7 @@ Shadow WR auto-tuning — raise min score when virtual drills underperform.
 
 import os
 
-SHADOW_WR_FLOOR = float(os.getenv('SHADOW_WR_FLOOR', '40'))
+SHADOW_WR_FLOOR = float(os.getenv('SHADOW_WR_FLOOR', os.getenv('SHADOW_MIN_WR', '40')))
 SHADOW_TUNE_DAYS = int(os.getenv('SHADOW_TUNE_DAYS', '14'))
 SHADOW_MIN_SAMPLES = int(os.getenv('SHADOW_MIN_SAMPLES', '10'))
 

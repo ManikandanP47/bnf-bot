@@ -16,6 +16,7 @@ from core.messenger     import Messenger
 from agents.learning_agent import BRAIN
 
 IST = pytz.timezone('Asia/Kolkata')
+BLOCK_ON_FILTER_ERROR = os.getenv('BLOCK_ON_FILTER_ERROR', 'true').lower() == 'true'
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -273,6 +274,11 @@ class RiskAgent(threading.Thread):
                 if filt.get('dynamic_sl'):
                     STATE.set('trade.dynamic_sl', filt['dynamic_sl'])
         except Exception as e:
+            if BLOCK_ON_FILTER_ERROR:
+                return {
+                    'approved': False,
+                    'reason': f'🛑 Trade filters failed — {str(e)[:50]}',
+                }
             warnings.append(f"⚠️ Trade filters skipped: {str(e)[:40]}")
 
         # ── After 2 PM no new entries ─────────────────────────────
@@ -299,6 +305,11 @@ class RiskAgent(threading.Thread):
             warnings.append(validation.get('summary', ''))
 
         except Exception as e:
+            if BLOCK_ON_FILTER_ERROR:
+                return {
+                    'approved': False,
+                    'reason': f'🛑 Market validator failed — {str(e)[:50]}',
+                }
             warnings.append(f"⚠️ Validator skipped: {str(e)[:40]}")
 
         # ── Chart S/R + unified F&O flow (OI walls, theta, swing lines) ──
@@ -366,6 +377,11 @@ class RiskAgent(threading.Thread):
                 if w:
                     warnings.append(w)
         except Exception as e:
+            if BLOCK_ON_FILTER_ERROR:
+                return {
+                    'approved': False,
+                    'reason': f'🛑 Flow/OI check failed — {str(e)[:50]}',
+                }
             warnings.append(f"⚠️ Flow check skipped: {str(e)[:40]}")
 
         return {
@@ -382,7 +398,7 @@ class RiskAgent(threading.Thread):
                 return False
         except Exception:
             pass
-        confirm = os.getenv('CONFIRM_BEFORE_TRADE', 'auto').lower()
+        confirm = os.getenv('CONFIRM_BEFORE_TRADE', 'true').lower()
         if confirm == 'auto':
             return os.getenv('PAPER_MODE', 'true').lower() == 'true'
         return confirm == 'true'
@@ -1103,8 +1119,9 @@ class MonitorAgent(threading.Thread):
             STATE.set('position.leg1_profit', leg1_profit)
             STATE.set('position.trail_sl', entry)  # Move SL to breakeven
 
+            leg1_lbl = 'paper' if os.getenv('PAPER_MODE', 'true').lower() == 'true' else 'live'
             msg = (
-                f"🎯 *Leg 1 Profit Locked!* (paper journal)\n"
+                f"🎯 *Leg 1 Profit Locked!* ({leg1_lbl})\n"
                 f"Exited {leg1_units} units at ₹{est_prem:.0f}\n"
                 f"Profit: ₹{leg1_profit:,} secured ✅\n"
                 f"Remaining {leg2_units} units: SL → breakeven ₹{entry:.0f}\n"

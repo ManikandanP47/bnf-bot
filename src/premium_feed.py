@@ -181,7 +181,7 @@ def virtual_mark_to_market(position: dict, bnf_current: float = 0) -> dict:
             'pnl_rs': pnl,
             'prem_source': q['source'],
             'symbol': q['symbol'],
-            'is_real': q['source'] in ('GROWW_LTP', 'STALE_GROWW_LTP'),
+            'is_real': q['source'] in ('GROWW_LTP', 'STALE_GROWW_LTP', 'GROWW_FEED'),
         }
 
     return _fallback_mtm(position, bnf_current, 'DELTA_FALLBACK')

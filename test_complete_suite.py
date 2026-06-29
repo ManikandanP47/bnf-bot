@@ -17,6 +17,12 @@ import pytz
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Isolate tests from production brain DB
+_test_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+os.environ['DB_PATH'] = _test_db.name
+os.environ.setdefault('ML_MODEL_DIR', tempfile.mkdtemp(prefix='bnf_ml_'))
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 IST = pytz.timezone('Asia/Kolkata')
@@ -103,6 +109,9 @@ modules = [
     'src.zone_manager', 'src.safety', 'src.capital_guard',
     'src.scanner', 'src.premarket', 'src.history_backtest',
     'src.groww_client', 'src.groww_historical', 'src.expiry_picker',
+    'src.shadow_learning', 'src.virtual_broker', 'src.ml_brain',
+    'src.sim_learning_report', 'src.market_simulator', 'src.ops_backup',
+    'agents.groww_feed_agent',
 ]
 for mod in modules:
     try:
@@ -125,7 +134,7 @@ try:
     cmds = [
         '/help', '/status', '/pnl', '/zone', '/pause', '/resume',
         '/journal', '/readiness', '/funnel', '/context', '/cpr',
-        '/flow', '/backtest', '/learn',
+        '/flow', '/backtest', '/learn', '/shadow', '/simreport', '/ml', '/groww', '/why',
     ]
     for c in cmds:
         try:

@@ -11,7 +11,8 @@ Solution: hybrid watch mode when any position is open:
        • Premium estimate nears SL or target
        • Anchor older than max age (safety refresh)
 
-Groww REST has no WebSocket in our stack — this is the safest near-live approach.
+Groww REST has WebSocket feed (`GrowwFeedAgent`) — this module bridges
+between feed ticks and REST refreshes when a position is open:
 """
 
 import os

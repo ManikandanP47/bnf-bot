@@ -126,6 +126,7 @@ class TraderBrain:
             ('mae_rs', 'REAL DEFAULT 0'),
             ('mfe_rs', 'REAL DEFAULT 0'),
             ('slippage_rs', 'REAL DEFAULT 0'),
+            ('mode', "TEXT DEFAULT 'paper'"),
         ]:
             try:
                 self.conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ}")
@@ -142,12 +143,15 @@ class TraderBrain:
                     'BELOW' if price < vwap else 'AT') if vwap else 'UNKNOWN'
 
         with self._lock:
+            trade_mode = (
+                'paper' if os.getenv('PAPER_MODE', 'true').lower() == 'true' else 'live'
+            )
             cur = self.conn.execute("""
                 INSERT INTO trades
                 (date, entry_time, option_name, bias, session, hour,
                  day_of_week, bnf_at_entry, bnf_range, score, regime,
-                 rsi, vwap_vs_price, entry_prem, sl_prem, tgt_prem)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 rsi, vwap_vs_price, entry_prem, sl_prem, tgt_prem, mode)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 now.strftime('%Y-%m-%d'),
                 now.strftime('%H:%M'),
@@ -165,6 +169,7 @@ class TraderBrain:
                 trade.get('entry_prem', 0),
                 trade.get('sl_prem', 0),
                 trade.get('tgt_prem', 0),
+                trade_mode,
             ))
             return cur.lastrowid
 
@@ -433,9 +438,10 @@ class TraderBrain:
         Calculate thresholds from trading history.
         ONLY adjusts after MIN_TRADES_TO_LEARN trades.
         """
-        rows = self.conn.execute(
-            "SELECT * FROM trades WHERE outcome IS NOT NULL"
-        ).fetchall()
+        rows = self.conn.execute("""
+            SELECT score, hour, session, outcome
+            FROM trades WHERE outcome IS NOT NULL
+        """).fetchall()
 
         total = len(rows)
         if total < MIN_TRADES_TO_LEARN:
@@ -450,43 +456,44 @@ class TraderBrain:
                 'learning_stage': f"EARLY ({total}/{MIN_TRADES_TO_LEARN} trades)"
             }
 
-        wins = [r for r in rows if r[23] == 'WIN']
+        wins = [r for r in rows if r[3] == 'WIN']
         wr   = round(len(wins) / total * 100, 1)
 
-        # Score win rates (need ≥10 per score)
-        score_wr = defaultdict(lambda: {'w':0,'t':0})
-        for r in rows:
-            s = r[11]
-            score_wr[s]['t'] += 1
-            if r[23] == 'WIN': score_wr[s]['w'] += 1
+        score_wr = defaultdict(lambda: {'w': 0, 't': 0})
+        for score, _hour, _sess, outcome in rows:
+            score_wr[score]['t'] += 1
+            if outcome == 'WIN':
+                score_wr[score]['w'] += 1
         good_scores = [s for s, v in score_wr.items()
-                       if v['t'] >= 10 and v['w']/v['t'] >= 0.60]
+                       if v['t'] >= 10 and v['w'] / v['t'] >= 0.60]
         min_score = min(good_scores) if good_scores else 5
 
-        # Avoid hours (need ≥5 samples, wr < 35%)
-        hour_stats = defaultdict(lambda: {'w':0,'t':0})
-        for r in rows:
-            h = r[7]  # hour column
-            hour_stats[h]['t'] += 1
-            if r[23] == 'WIN': hour_stats[h]['w'] += 1
+        hour_stats = defaultdict(lambda: {'w': 0, 't': 0})
+        for _score, hour, _sess, outcome in rows:
+            hour_stats[hour]['t'] += 1
+            if outcome == 'WIN':
+                hour_stats[hour]['w'] += 1
         avoid_hours = [h for h, v in hour_stats.items()
-                       if v['t'] >= 5 and v['w']/v['t'] < 0.35]
+                       if v['t'] >= 5 and v['w'] / v['t'] < 0.35]
 
-        # Scale trades/day (only after 20 recent with 65%+ wr)
         recent = rows[-20:]
-        rec_wr = sum(1 for r in recent if r[23]=='WIN') / 20 * 100
+        rec_wr = sum(1 for r in recent if r[3] == 'WIN') / 20 * 100
         max_trades = 1
-        if total >= 40 and rec_wr >= 65: max_trades = 2
-        if total >= 60 and rec_wr >= 75: max_trades = 3
+        if total >= 40 and rec_wr >= 65:
+            max_trades = 2
+        if total >= 60 and rec_wr >= 75:
+            max_trades = 3
 
-        # Best session
-        sess_stats = defaultdict(lambda: {'w':0,'t':0})
-        for r in rows:
-            sess_stats[r[6]]['t'] += 1  # session column
-            if r[23] == 'WIN': sess_stats[r[6]]['w'] += 1
-        best_sess = max(sess_stats,
-                        key=lambda s: sess_stats[s]['w']/max(sess_stats[s]['t'],1),
-                        default='')
+        sess_stats = defaultdict(lambda: {'w': 0, 't': 0})
+        for _score, _hour, sess, outcome in rows:
+            sess_stats[sess]['t'] += 1
+            if outcome == 'WIN':
+                sess_stats[sess]['w'] += 1
+        best_sess = max(
+            sess_stats,
+            key=lambda s: sess_stats[s]['w'] / max(sess_stats[s]['t'], 1),
+            default='',
+        )
 
         return {
             'min_score':      min_score,
