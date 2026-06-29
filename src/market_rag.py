@@ -181,6 +181,7 @@ def get_rag_usage_stats() -> dict:
 def ingest_trade_lesson(
     session: str, bias: str, regime: str,
     mistake: str, lesson: str, outcome: str, cpr_class: str = '',
+    weight: float = None,
 ):
     if not lesson:
         return
@@ -192,6 +193,16 @@ def ingest_trade_lesson(
         tags.extend(['cpr', cpr_class.lower()])
     tag_str = ','.join(t for t in tags if t)
 
+    if weight is None:
+        weight = 1.2 if outcome == 'WIN' else 1.0
+        if str(mistake).startswith('SHADOW'):
+            try:
+                from src.shadow_learning import is_learning_phase
+                if is_learning_phase():
+                    weight = 2.0
+            except Exception:
+                pass
+
     conn = _conn()
     today = datetime.now(IST).strftime('%Y-%m-%d')
     dup = conn.execute(
@@ -202,7 +213,7 @@ def ingest_trade_lesson(
         conn.execute(
             "INSERT INTO knowledge_chunks (tags, content, outcome, source, weight, created_at) "
             "VALUES (?,?,?,?,?,?)",
-            (tag_str, lesson[:500], outcome, 'trade', 1.2 if outcome == 'WIN' else 1.0,
+            (tag_str, lesson[:500], outcome, 'trade', weight,
              datetime.now(IST).strftime('%Y-%m-%d %H:%M')),
         )
         conn.commit()

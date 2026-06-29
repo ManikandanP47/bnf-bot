@@ -330,24 +330,32 @@ class DataAgent(threading.Thread):
             try:
                 self.refresh_token_if_needed()
                 if not self.is_market_time():
-                    time.sleep(30); continue
+                    time.sleep(120)
+                    continue
 
+                from src.api_scheduler import should_fetch
                 result = self.get_live_price()
                 if not result:
                     result = self.get_price_fallback()
 
                 if result and result.get('price', 0) > 0:
+                    from src.api_scheduler import mark_fetched
+                    mark_fetched('groww_ltp')
                     self._publish(result['price'],
                                   result.get('volume', 1000),
                                   result.get('source', 'UNKNOWN'))
                     self._ctx_tick += 1
-                    if self._ctx_tick % 6 == 1:
+                    if self._ctx_tick % 6 == 1 and should_fetch('market_context'):
                         try:
                             from src.market_context import refresh_market_context
                             refresh_market_context(self._token or '')
+                            from src.api_scheduler import mark_fetched
+                            mark_fetched('market_context')
                             from src.market_flow import refresh_market_flow
                             zone = STATE.get('zone') or {}
-                            refresh_market_flow(zone.get('bias', 'BULLISH'))
+                            if should_fetch('market_flow'):
+                                refresh_market_flow(zone.get('bias', 'BULLISH'))
+                                mark_fetched('market_flow')
                         except Exception:
                             pass
                     time.sleep(10)

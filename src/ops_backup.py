@@ -35,6 +35,11 @@ def run_daily_backup() -> dict:
         shutil.copy2(hb, os.path.join(dest, hb))
         copied.append(hb)
 
+    for extra in ('.groww_token_cache.json', '.groww_rate_limit.json'):
+        if os.path.exists(extra):
+            shutil.copy2(extra, os.path.join(dest, extra))
+            copied.append(extra)
+
     _prune_old_backups()
 
     return {'ok': bool(copied), 'dest': dest, 'files': copied}

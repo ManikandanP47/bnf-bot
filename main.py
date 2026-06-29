@@ -172,6 +172,7 @@ def scheduler(messenger: Messenger):
     last_pulse_hour = -1
     last_backup     = -1
     last_uptime_day = -1
+    last_groww_alert = -1
 
     while STATE.get('system.running'):
         try:
@@ -276,6 +277,11 @@ def scheduler(messenger: Messenger):
                 try:
                     from src.ops_backup import check_uptime_and_alert
                     last_uptime_day = check_uptime_and_alert(messenger, last_uptime_day)
+                except Exception:
+                    pass
+                try:
+                    from src.groww_health import maybe_alert_auth_degraded
+                    last_groww_alert = maybe_alert_auth_degraded(messenger, last_groww_alert)
                 except Exception:
                     pass
 
@@ -422,8 +428,9 @@ def main():
         f"💓 Auto pulses: 10 AM, 12 PM, 2 PM | 🎓 Shadow drills on setups\n"
         f"💾 Daily backup 3:40 PM | 🚨 Uptime alert if bot goes silent\n"
         f"📊 Nifty correlation filter + shadow WR auto-tunes min score\n"
-        f"🎯 WR filters: flow≥4, VWAP hard, OI walls, zone confirm, sweet premium\n"
-        f"🤖 AI coach on /today, journal & trade cards (if OpenAI set)\n"
+        f"🎯 WR filters: flow≥4, VWAP, OI walls, ADX, max pain, sweet premium\n"
+        f"🔌 /groww /why — API health & why no trade\n"
+        f"🤖 AI coach on /today, journal, weekly funnel & trade cards\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")

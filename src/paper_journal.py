@@ -191,27 +191,21 @@ def format_daily_paper_report() -> str:
         f"  Max drawdown: ₹{dd['max_drawdown']:,} | +1R rate: {r_st['pct_reach_1r']}%",
         "",
         f"🎯 *Live readiness:* {ready['reason']}",
-        "",
-        format_funnel_report(),
     ]
-    sess = session_expectancy()
-    if sess:
-        lines += ["", "*Session expectancy:*"]
-        for name, v in sess.items():
-            lines.append(f"  {name}: ₹{v['expectancy']}/trade ({v['win_rate']}% WR)")
+    try:
+        from src.shadow_learning import resolve_shadow_eod
+        resolve_shadow_eod()
+    except Exception:
+        pass
+    try:
+        from src.eod_scorecard import format_eod_scorecard
+        lines.append(format_eod_scorecard())
+    except Exception:
+        pass
     lines += [
         "",
         "_Review each trade above — you learn, brain learns_ 🤝",
     ]
-    try:
-        from src.shadow_learning import format_shadow_daily_section, resolve_shadow_eod
-        from src.learning_scoreboard import format_scoreboard_block
-        resolve_shadow_eod()
-        lines.append(format_shadow_daily_section())
-        lines.append(format_scoreboard_block(7))
-    except Exception:
-        pass
-
     try:
         from src.llm_advisor import llm_enabled, summarize_day
         if llm_enabled():

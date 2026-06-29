@@ -309,6 +309,23 @@ class RiskAgent(threading.Thread):
                 check_min_flow_score, check_oi_wall_veto,
                 check_shadow_agreement, check_premium_sweet_spot,
             )
+            from src.trend_strength import check_trend_strength
+            from src.max_pain_filter import check_max_pain_pin
+
+            ts_chk = check_trend_strength(
+                STATE.get('market.candles_15m', []), regime, trend
+            )
+            if not ts_chk.get('ok', True):
+                return {'approved': False, 'reason': ts_chk['reason']}
+            if ts_chk.get('reason'):
+                reasons.append(ts_chk['reason'])
+
+            mp_chk = check_max_pain_pin(trend, price)
+            if not mp_chk.get('ok', True):
+                return {'approved': False, 'reason': mp_chk['reason']}
+            if mp_chk.get('reason'):
+                reasons.append(mp_chk['reason'])
+
             flow_chk = flow_allows_trade(trend, price)
             flow = flow_chk.get('flow', {})
             STATE.set('signals.market_flow', flow)
@@ -384,6 +401,11 @@ class RiskAgent(threading.Thread):
                             log_funnel('risk_ok', signal)
                         else:
                             log_funnel('risk_block', signal, decision.get('reason', ''))
+                            try:
+                                from src.funnel_why import set_last_block
+                                set_last_block('risk_block', decision.get('reason', ''))
+                            except Exception:
+                                pass
                         needs_confirm = self._needs_confirmation()
                         approved = decision['approved']
                         STATE.update('signals', {
@@ -716,6 +738,19 @@ class ExecutionAgent(threading.Thread):
                     msg += f"\n\n🤖 *AI coach:*\n{ai}\n"
         except Exception:
             pass
+        try:
+            from src.trade_probability import format_probability_line
+            from src.brain_metrics import compute_paper_confidence
+            from src.learning_scoreboard import shadow_vs_paper_stats
+            msg += f"\n{format_probability_line(signal)}\n"
+            conf = compute_paper_confidence()
+            sh = shadow_vs_paper_stats(7)
+            msg += (
+                f"📈 Paper conf: {conf['score']}/100 | "
+                f"Shadow 7d: {sh.get('shadow_wr', 0)}% ({sh.get('shadow_n', 0)} drills)\n"
+            )
+        except Exception:
+            pass
         msg += (
             f"\n💰 *Min profit (leg 1 @ 1.5×):* ~₹{params.get('leg1_profit', 0):,}\n"
             f"_Confidence: {risk.get('confidence', 0)}%_"
@@ -802,6 +837,11 @@ class ExecutionAgent(threading.Thread):
                         'tgt_prem':   params['tgt_prem'],
                     }
                     learning_id = BRAIN.record_entry(trade_for_brain, market_ctx)
+                    try:
+                        from src.feature_log import capture_entry_features
+                        capture_entry_features(learning_id, signal, params)
+                    except Exception:
+                        pass
 
                     # Place order
                     result = self.place_order(params)

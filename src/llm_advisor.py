@@ -87,3 +87,15 @@ def weekly_coach_note(stats_block: str) -> str:
         stats_block,
         max_tokens=250,
     )
+
+
+def funnel_weekly_coach(funnel_text: str) -> str:
+    """AI summary of what blocked trades this week."""
+    if not llm_enabled() or not funnel_text:
+        return ''
+    return llm_chat(
+        "Analyze this signal funnel for a small BankNifty bot. "
+        "What filter blocked most? Was it good? One tweak. Max 80 words.",
+        funnel_text[:2500],
+        max_tokens=180,
+    )

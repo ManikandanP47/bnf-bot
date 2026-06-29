@@ -327,6 +327,8 @@ class AnalysisAgent(threading.Thread):
         know = run_knowledge_checks(signal_preview, c5m)
         if not know.get('ok', True):
             from src.trade_analytics import log_funnel
+            from src.funnel_why import set_last_block
+            set_last_block('knowledge_block', know.get('reason', ''))
             log_funnel('knowledge_block', signal_preview, know.get('reason', ''))
             return
         score += know.get('score_delta', 0)
@@ -347,6 +349,7 @@ class AnalysisAgent(threading.Thread):
                 'price':       price,
                 'session':     session,
                 'regime':      STATE.get('market.regime', 'TRENDING'),
+                'hour':        now.hour,
                 'rsi':         rsi_5m,
                 'rsi_5m':      rsi_5m,
                 'rsi_1m':      rsi_1m,

@@ -247,6 +247,14 @@ class CommandListener(threading.Thread):
             from src.brain_metrics import format_readiness_report
             return format_readiness_report()
 
+        elif cmd == '/groww':
+            from src.groww_health import format_groww_health
+            return format_groww_health()
+
+        elif cmd == '/why':
+            from src.funnel_why import format_why_report
+            return format_why_report()
+
         elif cmd == '/funnel':
             from src.trade_analytics import format_funnel_report
             return format_funnel_report()
@@ -311,6 +319,8 @@ class CommandListener(threading.Thread):
                 "/cpr — Central Pivot Range (TC/P/BC)\n"
                 "/flow — OI, VIX, EMA, theta, chart lines (also 9:25 AM auto)\n"
                 "/today — Full day dashboard + AI coach\n"
+                "/groww — Groww API health + throttle status\n"
+                "/why   — Why last setup was blocked\n"
                 "/learn — RAG memory (rules + your trades)\n"
                 "/shadow — Virtual drill results today\n"
                 "/stop    — Emergency stop\n"

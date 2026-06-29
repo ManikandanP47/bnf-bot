@@ -520,11 +520,20 @@ class TraderBrain:
             f"_Learning from every trade_ 🤖"
         )
         try:
-            from src.llm_advisor import llm_enabled, weekly_coach_note
+            from src.llm_advisor import llm_enabled, weekly_coach_note, funnel_weekly_coach
             if llm_enabled():
                 ai = weekly_coach_note(body)
                 if ai:
                     body += f"\n\n🤖 *AI weekly coach:*\n{ai}"
+                from src.trade_analytics import format_funnel_report
+                funnel_ai = funnel_weekly_coach(format_funnel_report())
+                if funnel_ai:
+                    body += f"\n\n📊 *Funnel AI:*\n{funnel_ai}"
+        except Exception:
+            pass
+        try:
+            from src.skip_learning import format_skip_weekly_section
+            body += format_skip_weekly_section()
         except Exception:
             pass
         return body

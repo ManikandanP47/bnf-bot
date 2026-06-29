@@ -159,7 +159,12 @@ def _get_oi_deep_cached() -> dict:
 
 def refresh_market_flow(bias: str = 'BULLISH') -> dict:
     from core.shared_state import STATE
-    _fetch_oi_deep()
+    from src.api_scheduler import should_fetch, mark_fetched
+    if should_fetch('market_flow'):
+        if should_fetch('nse_oi'):
+            _fetch_oi_deep()
+            mark_fetched('nse_oi')
+        mark_fetched('market_flow')
     snap = build_market_flow(STATE.get('market.price', 0), bias)
     STATE.set('market.flow', snap)
     return snap
@@ -315,4 +320,12 @@ def format_morning_flow_telegram() -> str:
     else:
         header += "📌 No active zone — bot stays quiet unless evening scan saves one\n\n"
 
-    return header + format_flow_report()
+    return header + format_flow_report() + _morning_plan()
+
+
+def _morning_plan() -> str:
+    try:
+        from src.morning_plan import format_morning_trade_plan
+        return format_morning_trade_plan()
+    except Exception:
+        return ''
