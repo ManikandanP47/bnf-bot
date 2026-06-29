@@ -391,10 +391,11 @@ def main():
         f"/execute /skip — Confirm or skip trade\n"
         f"/status /pnl /zone — Health & P&L\n"
         f"/journal /readiness /funnel — Paper & gates\n"
-        f"/context /cpr /flow /today — Levels, F&O flow, dashboard\n"
-        f"/backtest /learn — History & brain memory\n"
+        f"/context /cpr /flow /today — Levels, F&O, AI dashboard\n"
+        f"/shadow /learn /backtest — Drills, RAG memory, history\n"
         f"/help — Full command list\n\n"
-        f"🎓 *Learning:* shadow drills auto on every setup (2-week phase)\n"
+        f"💓 Auto pulses: 10 AM, 12 PM, 2 PM | 🎓 Shadow drills on setups\n"
+        f"🤖 AI coach on /today, journal & trade cards (if OpenAI set)\n"
         f"_Paper first — bot must pass all gates before live ₹5k_ 🛡️"
     )
     print("\n✅ All agents running")
