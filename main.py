@@ -47,8 +47,8 @@ def reconcile_on_startup(messenger: Messenger):
     token = STATE.get('system.groww_token', '')
     if not token:
         try:
-            from agents.data_agent import DataAgent
-            token = DataAgent().get_groww_token()
+            from src.groww_auth import fetch_groww_token
+            token = fetch_groww_token()
         except Exception:
             token = os.getenv('GROWW_ACCESS_TOKEN', '')
 
@@ -353,8 +353,8 @@ def scheduler(messenger: Messenger):
                 try:
                     from src.history_backtest import refresh_backtest_summary, format_backtest_report
                     from src.market_context import refresh_market_context
-                    from agents.data_agent import DataAgent
-                    tok = DataAgent().get_groww_token()
+                    from src.groww_auth import fetch_groww_token
+                    tok = STATE.get('system.groww_token', '') or fetch_groww_token()
                     refresh_market_context(tok)
                     refresh_backtest_summary(tok)
                     messenger.send(format_backtest_report())
@@ -440,18 +440,19 @@ def main():
     threading.Thread(target=_warm_readiness_cache, daemon=True).start()
 
     def _warm_market_intel():
-        time.sleep(8)
+        time.sleep(12)
         try:
-            from agents.data_agent import DataAgent
+            from src.groww_auth import fetch_groww_token
             from src.market_context import refresh_market_context
             from src.history_backtest import refresh_backtest_summary
             from src.market_rag import init_knowledge_base
             from src.shadow_learning import init_shadow_tables
             init_knowledge_base()
             init_shadow_tables()
-            tok = DataAgent().get_groww_token()
-            refresh_market_context(tok)
-            refresh_backtest_summary(tok)
+            tok = STATE.get('system.groww_token', '') or fetch_groww_token()
+            if tok:
+                refresh_market_context(tok)
+                refresh_backtest_summary(tok)
             print("📊 Market context + RAG + history backtest warmed")
         except Exception as e:
             print(f"Market intel warm skipped: {e}")

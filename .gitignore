@@ -9,6 +9,7 @@
 !heartbeat.json
 *.log
 backups/
+.groww_token_cache.json
 __pycache__/
 *.pyc
 .DS_Store

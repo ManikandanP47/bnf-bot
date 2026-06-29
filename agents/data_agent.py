@@ -79,10 +79,21 @@ class DataAgent(threading.Thread):
         now = datetime.now(IST).time()
         return dtime(9, 0) <= now <= dtime(15, 50)
 
-    def get_groww_token(self) -> str:
+    def get_groww_token(self, force_refresh: bool = False) -> str:
+        if not force_refresh:
+            if self._token and self._token.startswith('eyJ'):
+                return self._token
+            state_tok = STATE.get('system.groww_token', '')
+            if state_tok and state_tok.startswith('eyJ'):
+                self._token = state_tok
+                return state_tok
         try:
             from src.groww_auth import fetch_groww_token
-            access_token = fetch_groww_token(max_retries=2, base_delay_sec=30)
+            access_token = fetch_groww_token(
+                force_refresh=force_refresh,
+                max_retries=4,
+                base_delay_sec=60,
+            )
             STATE.set('system.groww_token', access_token)
             from src.groww_client import clear_groww_client
             clear_groww_client()
@@ -90,20 +101,27 @@ class DataAgent(threading.Thread):
             return access_token
         except Exception as e:
             STATE.add_error(f"Token: {str(e)[:40]}")
+            if self._token and self._token.startswith('eyJ'):
+                return self._token
         return os.getenv('GROWW_ACCESS_TOKEN', '')
 
     def refresh_token_if_needed(self):
-        """Auto-refresh token at 8:45 AM and every 4 hours during market hours"""
+        """Auto-refresh token once per scheduled slot (8:45, 12:45, 15:45 IST)."""
         now = datetime.now(IST)
-        hour = now.hour
-        
-        # Scheduled refresh: 8:45 AM + every 4 hours (12:45, 3:45 PM)
-        if (hour == 8 and 44 <= now.minute <= 46) or \
-           (hour == 12 and 44 <= now.minute <= 46) or \
-           (hour == 15 and 44 <= now.minute <= 46):
-            self._token = self.get_groww_token()
-            STATE.set('system.token_status', f'REFRESHED_{hour}:45AM')
-            print(f"🔑 Token refreshed at {hour}:45")
+        slots = [(8, 45), (12, 45), (15, 45)]
+        today = now.strftime('%Y-%m-%d')
+
+        for hour, minute in slots:
+            if now.hour != hour or not (minute - 1 <= now.minute <= minute + 1):
+                continue
+            key = f'system.token_refreshed_{hour:02d}{minute:02d}'
+            if STATE.get(key) == today:
+                return
+            self._token = self.get_groww_token(force_refresh=True)
+            STATE.set(key, today)
+            STATE.set('system.token_status', f'REFRESHED_{hour}:{minute:02d}')
+            print(f"🔑 Token refreshed at {hour}:{minute:02d}")
+            return
 
     def get_live_price(self) -> dict:
         """Get live BankNifty price from Groww with auto-retry on token expiry"""
@@ -171,7 +189,8 @@ class DataAgent(threading.Thread):
     def get_price_fallback(self) -> dict:
         """Groww retry + historical close if LTP unavailable."""
         try:
-            self._token = self.get_groww_token()
+            if not self._token:
+                self._token = self.get_groww_token()
             if self._token:
                 live = self.get_live_price()
                 if live.get('price', 0) > 0:

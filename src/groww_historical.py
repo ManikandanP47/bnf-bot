@@ -18,8 +18,8 @@ def _get_groww(token: str = ''):
         from core.shared_state import STATE
         tok = STATE.get('system.groww_token', '')
     if not tok:
-        from agents.data_agent import DataAgent
-        tok = DataAgent().get_groww_token()
+        from src.groww_auth import fetch_groww_token
+        tok = fetch_groww_token()
     return get_groww_client(tok), tok
 
 

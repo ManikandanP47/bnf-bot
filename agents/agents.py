@@ -499,8 +499,8 @@ class ExecutionAgent(threading.Thread):
         token = STATE.get('system.groww_token', '')
         if not token:
             try:
-                from agents.data_agent import DataAgent
-                token = DataAgent().get_groww_token()
+                from src.groww_auth import fetch_groww_token
+                token = fetch_groww_token()
             except Exception:
                 pass
         from src.safety import check_groww_balance
