@@ -91,8 +91,8 @@ class DataAgent(threading.Thread):
             from src.groww_auth import fetch_groww_token
             access_token = fetch_groww_token(
                 force_refresh=force_refresh,
-                max_retries=4,
-                base_delay_sec=60,
+                max_retries=1,
+                base_delay_sec=120,
             )
             STATE.set('system.groww_token', access_token)
             from src.groww_client import clear_groww_client
@@ -311,7 +311,19 @@ class DataAgent(threading.Thread):
     def run(self):
         STATE.set_agent_status('data', 'RUNNING')
         print("📡 Data Agent: 1-min + 5-min + 15-min candles ✅")
-        self._token = self.get_groww_token()
+        try:
+            from src.groww_auth import is_rate_limited, rate_limit_remaining_sec
+            if is_rate_limited():
+                print(
+                    f"⏸️ Groww cooldown {rate_limit_remaining_sec() // 60}m — "
+                    f"price via yfinance until token cache refreshes"
+                )
+                self._token = self.get_groww_token()  # returns stale cache if any
+            else:
+                self._token = self.get_groww_token()
+        except Exception as e:
+            print(f"⚠️ Groww token skipped: {str(e)[:80]}")
+            self._token = STATE.get('system.groww_token', '') or ''
         self._seed_candles_from_history()
 
         while self.running and STATE.get('system.running'):
