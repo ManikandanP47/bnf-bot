@@ -2,7 +2,7 @@
 BankNifty Multi-Agent Trading System — Main Orchestrator
 
 Groww-only stack (data + execution):
-  Data     → Groww BankNifty LTP + yfinance candle seed on cold start
+  Data     → Groww LTP + Groww historical candles (cold start)
   Analysis → SMC 3-timeframe on live candles
   Risk     → Filters + brain + capital guards
   Execute  → Groww market buy + OCO (SL/target)

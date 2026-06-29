@@ -164,55 +164,36 @@ class DataAgent(threading.Thread):
                 STATE.add_error(f"Price: {str(e)[:40]}")
         return {}
 
-    def get_price_yfinance(self) -> dict:
-        """yfinance fallback when Groww LTP unavailable (candle seed / price only)."""
-        try:
-            import yfinance as yf
-            hist = yf.Ticker('^NSEBANK').history(period='1d', interval='1m')
-            if len(hist) > 0:
-                p = float(hist['Close'].iloc[-1])
-                if p > 0:
-                    return {'price': p, 'volume': 1000, 'source': 'YFINANCE'}
-        except Exception:
-            pass
+    def get_price_fallback(self) -> dict:
+        """Groww retry + historical close if LTP unavailable."""
         try:
             self._token = self.get_groww_token()
             if self._token:
-                return self.get_live_price()
+                live = self.get_live_price()
+                if live.get('price', 0) > 0:
+                    return live
+        except Exception:
+            pass
+        try:
+            from src.groww_historical import fetch_latest_price
+            p = fetch_latest_price(self._token or '')
+            if p > 0:
+                return {'price': p, 'volume': 1000, 'source': 'GROWW_HIST'}
         except Exception:
             pass
         return {}
 
     def _seed_candles_from_history(self):
-        """Cold start: seed 1m candles from yfinance so 5m/15m work immediately."""
+        """Cold start: seed 1m candles from Groww historical API."""
         if len(self.b5.get_candles()) >= 10:
             return
         try:
-            import yfinance as yf
-            df = yf.Ticker('^NSEBANK').history(period='2d', interval='1m')
-            if df is None or len(df) < 20:
-                return
-            today = datetime.now(IST).date()
-            count = 0
-            for ts, row in df.iterrows():
-                try:
-                    tick_ts = ts.to_pydatetime()
-                    if tick_ts.tzinfo is None:
-                        tick_ts = IST.localize(tick_ts)
-                    else:
-                        tick_ts = tick_ts.astimezone(IST)
-                    if tick_ts.date() != today:
-                        continue
-                    price = float(row['Close'])
-                    vol = int(row.get('Volume', 1000) or 1000)
-                    self.b1.add_tick(price, max(vol, 1), tick_ts)
-                    count += 1
-                except Exception:
-                    continue
+            from src.groww_historical import seed_candle_builders
+            count = seed_candle_builders(self.b1, self.b5, self.b15, self._token or '')
             if count > 0:
-                print(f"📈 Seeded {count} historical ticks for cold start")
+                print(f"📈 Groww historical: seeded {count} x 1m candles")
         except Exception as e:
-            STATE.add_error(f"Candle seed: {str(e)[:40]}")
+            STATE.add_error(f"Groww candle seed: {str(e)[:40]}")
 
     def _calc_rsi(self, candles, period=14) -> float:
         if len(candles) < period+1: return 50.0
@@ -307,7 +288,7 @@ class DataAgent(threading.Thread):
 
                 result = self.get_live_price()
                 if not result:
-                    result = self.get_price_yfinance()
+                    result = self.get_price_fallback()
 
                 if result and result.get('price', 0) > 0:
                     self._publish(result['price'],
