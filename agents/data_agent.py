@@ -185,6 +185,17 @@ class DataAgent(threading.Thread):
                 return {'price': p, 'volume': 1000, 'source': 'GROWW_HIST'}
         except Exception:
             pass
+        # Final fallback: yfinance (free, slight delay — better than nothing)
+        try:
+            import yfinance as yf
+            h = yf.Ticker('^NSEBANK').history(period='1d', interval='1m')
+            if len(h) > 0:
+                p = float(h['Close'].iloc[-1])
+                v = int(h['Volume'].iloc[-1])
+                if p > 0:
+                    return {'price': p, 'volume': v, 'source': 'YFINANCE_FALLBACK'}
+        except Exception:
+            pass
         return {}
 
     def _seed_candles_from_history(self):
