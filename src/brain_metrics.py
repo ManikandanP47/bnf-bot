@@ -221,12 +221,17 @@ def assess_live_readiness() -> dict:
                    f"{conf['score']}/100 (need {MIN_CONFIDENCE}+)")
 
     try:
-        from src.shadow_learning import learning_phase_info
+        from src.shadow_learning import training_phase, learning_phase_info
         sh = learning_phase_info()
-        if sh['in_learning_phase']:
+        phase = training_phase()
+        if phase == 'SIM':
             all_ok = False
-            gate('Learning phase', False,
-                 f"{sh['days_left']}d left of {LEARNING_PHASE_DAYS} — shadow drills running")
+            gate('Week 1–2 sim', False,
+                 f"Virtual sim only — paper in {sh['days_until_paper']}d")
+        elif phase == 'PAPER':
+            all_ok = False
+            gate('Week 3–4 paper', False,
+                 f"Paper training — live window in {sh['days_until_live']}d")
         elif sh['shadow_total'] >= 5:
             all_ok &= gate('Shadow drills', sh['shadow_win_rate'] >= SHADOW_MIN_WR,
                             f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills, need {SHADOW_MIN_WR}%)")

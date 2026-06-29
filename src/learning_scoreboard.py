@@ -78,8 +78,10 @@ def estimate_slippage_from_shadow() -> dict:
 
 
 def post_learning_max_trades() -> int:
-    """After learning phase: precision mode trade cap."""
-    from src.shadow_learning import is_learning_phase
-    if is_learning_phase():
-        return int(os.getenv('LEARNING_MAX_TRADES_DAY', '1'))
-    return int(os.getenv('POST_LEARNING_MAX_TRADES_DAY', '1'))
+    """Trade cap by training phase: 0 in sim weeks, 2 in paper weeks."""
+    from src.shadow_learning import is_sim_phase, is_paper_phase
+    if is_sim_phase():
+        return 0
+    if is_paper_phase():
+        return int(os.getenv('LEARNING_MAX_TRADES_DAY', '2'))
+    return int(os.getenv('POST_LEARNING_MAX_TRADES_DAY', '2'))

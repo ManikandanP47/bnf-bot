@@ -8,7 +8,7 @@ def format_startup_message(paper: bool) -> str:
         f"Mode: {mode}\n"
         f"Agents: All 9 running ✅\n"
         f"Pre-market: 9:00 AM | Flow: 9:25 AM | Evening scan: 8:15 PM IST\n\n"
-        f"🎮 *Live-market virtual training* — real Groww LTP, ₹0 risk (14d gym)\n"
+        f"🎮 *4-week plan* — wk 1–2 virtual sim (₹0) → wk 3–4 paper `/execute` → live\n"
         f"📡 WebSocket feed + live-like fills (spread + slip)\n\n"
         f"✑ *Quick commands*\n"
         f"🎛 /pause /resume /stop — Control bot\n"
@@ -19,7 +19,7 @@ def format_startup_message(paper: bool) -> str:
         f"🎓 /shadow /simreport /ml /learn — Virtual drills & brain\n"
         f"🔌 /groww /why /backtest — API health, blocks, history\n"
         f"❓ /help — Full list with explanations\n\n"
-        f"_Paper first — pass all /readiness gates before live ₹5k_ 🛡️"
+        f"_Week 1–2: sim only. Week 3–4: paper (2/day). Live after month + /readiness ✅_ 🛡️"
     )
 
 
@@ -58,6 +58,5 @@ def format_full_help() -> str:
         "/why — Why the last setup was blocked (filters explained)\n"
         "/backtest — Historical proxy backtest on past setups\n\n"
         "/help — This message\n\n"
-        "_Virtual sim = live Groww tape + fake wallet. Paper /execute = step 2. "
-        "Live only after /readiness ✅_ 🛡️"
+        "_Virtual sim (wk 1–2) → paper /execute (wk 3–4) → live after /readiness ✅_ 🛡️"
     )

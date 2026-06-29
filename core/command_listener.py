@@ -68,6 +68,17 @@ class CommandListener(threading.Thread):
             return "❌ No pending trade suggestion. Bot is watching for setups."
         if STATE.get('position.open'):
             return "❌ Already in a position."
+        try:
+            from src.shadow_learning import paper_trading_allowed, learning_phase_info
+            if not paper_trading_allowed():
+                info = learning_phase_info()
+                return (
+                    f"🎓 *Week 1–2: virtual sim only*\n\n"
+                    f"Paper trading unlocks in *{info['days_until_paper']}* day(s).\n"
+                    f"Bot is learning from live-market sims — `/shadow` `/ml`"
+                )
+        except Exception:
+            pass
         STATE.set('signals.awaiting_confirmation', False)
         STATE.set('signals.execute_now', True)
         paper = os.getenv('PAPER_MODE', 'true').lower() == 'true'
@@ -298,7 +309,7 @@ class CommandListener(threading.Thread):
             )
             from src.shadow_learning import learning_phase_info
             info = learning_phase_info()
-            if info['in_learning_phase']:
+            if info['phase'] in ('SIM', 'PAPER'):
                 return format_daily_sim_training_report()
             return format_graduation_report()
 
@@ -308,10 +319,16 @@ class CommandListener(threading.Thread):
             )
             from src.market_simulator import format_sim_status
             info = learning_phase_info()
+            phase_labels = {
+                'SIM': 'Week 1–2 · virtual sim only',
+                'PAPER': 'Week 3–4 · paper /execute',
+                'LIVE_READY': 'Month done · /readiness for live',
+            }
             hdr = (
-                f"🎓 *Market Simulation*\n"
-                f"Phase: {'LEARNING' if info['in_learning_phase'] else 'GRADUATED'}\n"
-                f"Days left: {info['days_left']}/{info['phase_days']}\n\n"
+                f"🎓 *Training plan*\n"
+                f"Phase: *{info['phase']}* — {phase_labels.get(info['phase'], '')}\n"
+                f"Paper unlocks in: {info['days_until_paper']}d | "
+                f"Live window in: {info['days_until_live']}d\n\n"
                 f"{format_auto_learning_status()}\n"
                 f"{format_sim_status()}\n"
             )

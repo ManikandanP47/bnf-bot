@@ -29,7 +29,11 @@ if [[ -f .env ]]; then
   ensure_var SIM_SCAN_MINUTES 4
   ensure_var SIM_MAX_OPEN 2
   ensure_var SIM_MIN_GAP_MIN 8
+  ensure_var SIM_ONLY_DAYS 14
+  ensure_var PAPER_PHASE_DAYS 14
   ensure_var LEARNING_PHASE_DAYS 14
+  ensure_var LEARNING_MAX_TRADES_DAY 2
+  ensure_var POST_LEARNING_MAX_TRADES_DAY 2
   ensure_var SHADOW_MIN_WR 40
   ensure_var SIM_TELEGRAM_QUIET true
 fi

@@ -139,8 +139,8 @@ def format_daily_sim_training_report() -> str:
         "━━━━━━━━━━━━━━━━━━━",
         "_Bot trained on LIVE BNF + option premium — zero orders placed_",
         "",
-        f"🎓 Phase: {'LEARNING' if info['in_learning_phase'] else 'GRADUATED'} "
-        f"({info['days_left']}d left of {info['phase_days']})",
+        f"🎓 Phase: *{info['phase']}* — {info['days_left']}d left "
+        f"(paper in {info['days_until_paper']}d | live window in {info['days_until_live']}d)",
     ]
 
     if not trades:
@@ -228,8 +228,37 @@ def _phase_start_date() -> str:
     return row[0] if row and row[0] else datetime.now(IST).strftime('%Y-%m-%d')
 
 
+def format_sim_phase_complete_report() -> str:
+    """End of week 2 — virtual sim done, paper phase starts."""
+    from src.shadow_learning import PAPER_PHASE_DAYS, TOTAL_TRAINING_DAYS
+    stats = get_sim_stats(since_date=_phase_start_date())
+    cap = int(os.getenv('LEARNING_MAX_TRADES_DAY', '2'))
+
+    lines = [
+        "🎓 *Week 1–2 complete — virtual sim finished*",
+        "━━━━━━━━━━━━━━━━━━━",
+        f"  Virtual trades: *{stats['total']}* | WR *{stats['win_rate']}%*",
+        f"  Virtual P&L: ₹{stats['total_pnl']:,} (not real money)",
+        "",
+        f"📝 *Week 3–4: paper training starts tomorrow*",
+        f"  • Bot suggests setups — you `/execute` or `/skip`",
+        f"  • Max *{cap}* confirmed paper trades/day",
+        f"  • ML keeps learning from paper closes (RF + NN)",
+        f"  • Virtual sim is *OFF* — paper uses slippage model",
+        "",
+        f"🎯 After *{TOTAL_TRAINING_DAYS}* days total + `/readiness` green → live ₹5k",
+        f"_Paper phase: {PAPER_PHASE_DAYS} days — track `/journal` daily_",
+    ]
+    try:
+        from src.ml_brain import format_ml_status
+        lines += ["", format_ml_status()]
+    except Exception:
+        pass
+    return '\n'.join(lines)
+
+
 def format_graduation_report() -> str:
-    """2-week training complete — win rate, what bot learned, live readiness."""
+    """4-week training complete — sim + paper summary, live readiness."""
     from src.shadow_learning import learning_phase_info
     info = learning_phase_info()
     stats = get_sim_stats(since_date=_phase_start_date())
@@ -240,7 +269,7 @@ def format_graduation_report() -> str:
     ready = ready_wr and ready_n
 
     lines = [
-        "🎓 *2-Week Market Training — Graduation Report*",
+        "🎓 *4-Week Training Complete — Month-End Report*",
         "━━━━━━━━━━━━━━━━━━━",
         "_Bot trained on real market flow — no money was placed_",
         "",
@@ -291,7 +320,7 @@ def format_graduation_report() -> str:
             "✅ *Verdict: Training passed minimum bar*",
             f"  {stats['win_rate']}% WR ≥ {MIN_SIM_GRAD_WR}% | "
             f"{stats['total']} sims ≥ {MIN_SIM_GRAD_SAMPLES}",
-            "  Next: paper Execute trades to confirm, then /readiness for live.",
+            "  Next: check `/readiness` — if all green, set PAPER_MODE=false for live ₹5k.",
         ]
     else:
         lines += [
@@ -313,33 +342,45 @@ def format_graduation_report() -> str:
 
 
 def maybe_send_graduation(messenger) -> bool:
-    """Send graduation report once when learning phase ends."""
-    from src.shadow_learning import learning_phase_info, init_shadow_tables
+    """Send phase-end reports: sim complete (week 2) and month complete (week 4)."""
+    from src.shadow_learning import training_phase, init_shadow_tables
     init_shadow_tables()
 
-    info = learning_phase_info()
-    if info['in_learning_phase'] or info['days_left'] > 0:
-        return False
-
+    phase = training_phase()
     today = datetime.now(IST).strftime('%Y-%m-%d')
     conn = _conn()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS bot_flags (key TEXT PRIMARY KEY, value TEXT)
     """)
-    sent = conn.execute(
-        "SELECT value FROM bot_flags WHERE key='graduation_sent'"
-    ).fetchone()
-    if sent and sent[0] == 'yes':
-        conn.close()
-        return False
 
-    messenger.send(format_graduation_report())
-    conn.execute(
-        "INSERT OR REPLACE INTO bot_flags (key, value) VALUES ('graduation_sent', 'yes')",
-    )
-    conn.commit()
+    def _already(flag: str) -> bool:
+        row = conn.execute(
+            "SELECT value FROM bot_flags WHERE key=?", (flag,)
+        ).fetchone()
+        return bool(row and row[0] == 'yes')
+
+    def _mark(flag: str):
+        conn.execute(
+            "INSERT OR REPLACE INTO bot_flags (key, value) VALUES (?, 'yes')",
+            (flag,),
+        )
+
+    if phase == 'PAPER' and not _already('sim_graduation_sent'):
+        messenger.send(format_sim_phase_complete_report())
+        _mark('sim_graduation_sent')
+        conn.commit()
+        conn.close()
+        return True
+
+    if phase == 'LIVE_READY' and not _already('training_complete_sent'):
+        messenger.send(format_graduation_report())
+        _mark('training_complete_sent')
+        conn.commit()
+        conn.close()
+        return True
+
     conn.close()
-    return True
+    return False
 
 
 def reset_graduation_flag() -> dict:
@@ -351,7 +392,7 @@ def reset_graduation_flag() -> dict:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS bot_flags (key TEXT PRIMARY KEY, value TEXT)
     """)
-    conn.execute("DELETE FROM bot_flags WHERE key='graduation_sent'")
+    conn.execute("DELETE FROM bot_flags WHERE key IN ('graduation_sent', 'sim_graduation_sent', 'training_complete_sent')")
     conn.commit()
     conn.close()
     return {'ok': True, 'message': 'Graduation flag cleared — report will send when phase ends'}

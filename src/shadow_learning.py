@@ -17,7 +17,10 @@ import pytz
 
 IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
-LEARNING_PHASE_DAYS = int(os.getenv('LEARNING_PHASE_DAYS', '14'))
+SIM_ONLY_DAYS = int(os.getenv('SIM_ONLY_DAYS', os.getenv('LEARNING_PHASE_DAYS', '14')))
+PAPER_PHASE_DAYS = int(os.getenv('PAPER_PHASE_DAYS', '14'))
+LEARNING_PHASE_DAYS = SIM_ONLY_DAYS  # backward compat alias
+TOTAL_TRAINING_DAYS = SIM_ONLY_DAYS + PAPER_PHASE_DAYS
 SHADOW_MAX_PER_DAY = int(os.getenv('SHADOW_MAX_PER_DAY', '5'))
 SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
 SHADOW_ENABLED = os.getenv('SHADOW_LEARNING', 'true').lower() == 'true'
@@ -110,8 +113,8 @@ def init_shadow_tables():
     conn.close()
 
 
-def is_learning_phase() -> bool:
-    """True during first LEARNING_PHASE_DAYS of bot activity."""
+def _first_activity_date():
+    """First day with virtual or confirmed trade activity."""
     init_shadow_tables()
     conn = _conn()
     row = conn.execute("""
@@ -122,13 +125,51 @@ def is_learning_phase() -> bool:
     """).fetchone()
     conn.close()
     if not row or not row[0]:
-        return True
+        return None
     try:
-        first = datetime.strptime(row[0], '%Y-%m-%d').date()
-        days = (datetime.now(IST).date() - first).days
-        return days < LEARNING_PHASE_DAYS
+        return datetime.strptime(row[0], '%Y-%m-%d').date()
     except ValueError:
-        return True
+        return None
+
+
+def training_elapsed_days() -> int:
+    first = _first_activity_date()
+    if not first:
+        return 0
+    return (datetime.now(IST).date() - first).days
+
+
+def training_phase() -> str:
+    """SIM (week 1–2) → PAPER (week 3–4) → LIVE_READY (month done)."""
+    elapsed = training_elapsed_days()
+    if elapsed < SIM_ONLY_DAYS:
+        return 'SIM'
+    if elapsed < TOTAL_TRAINING_DAYS:
+        return 'PAPER'
+    return 'LIVE_READY'
+
+
+def is_sim_phase() -> bool:
+    return training_phase() == 'SIM'
+
+
+def is_paper_phase() -> bool:
+    return training_phase() == 'PAPER'
+
+
+def is_learning_phase() -> bool:
+    """True for full 4-week training window (blocks live until month ends)."""
+    return training_phase() != 'LIVE_READY'
+
+
+def paper_trading_allowed() -> bool:
+    """Paper /execute only in week 3–4 and after."""
+    return training_phase() in ('PAPER', 'LIVE_READY')
+
+
+def is_learning_phase_legacy_sim() -> bool:
+    """Alias — virtual sim runs only in SIM phase."""
+    return is_sim_phase()
 
 
 def should_auto_paper_execute() -> bool:
@@ -140,36 +181,38 @@ def should_auto_paper_execute() -> bool:
         return False
     if os.getenv('PAPER_MODE', 'true').lower() != 'true':
         return False
-    return is_learning_phase()
+    return is_paper_phase()
 
 
 def format_auto_learning_status() -> str:
     """One-liner for /status and startup — what runs automatically."""
+    from src.market_simulator import SIM_MAX_PER_DAY, SIM_MIN_SCORE
     info = learning_phase_info()
-    if info['in_learning_phase']:
-        from src.market_simulator import SIM_MAX_PER_DAY, SIM_MIN_SCORE
+    phase = info['phase']
+    if phase == 'SIM':
         return (
-            f"🎓 *Auto-learning ON* ({info['days_left']}d left)\n"
-            f"  • Market sim every ~4m — virtual CE/PE on live flow (max {SIM_MAX_PER_DAY}/day)\n"
-            f"  • Sim min score {SIM_MIN_SCORE} — relaxed vs Execute filters\n"
-            f"  • Tracks premium path in memory — no Groww orders\n"
-            f"  • Brain + RAG learn from every sim close"
+            f"🎓 *Week 1–2: virtual sim only* ({info['days_left']}d left)\n"
+            f"  • Market sim every ~4m — live CE/PE, ₹0 risk (max {SIM_MAX_PER_DAY}/day)\n"
+            f"  • Sim min score {SIM_MIN_SCORE} — paper `/execute` locked until week 3\n"
+            f"  • Brain + ML learn from every sim close — `/ml` for RF/NN progress"
+        )
+    if phase == 'PAPER':
+        cap = int(os.getenv('LEARNING_MAX_TRADES_DAY', '2'))
+        return (
+            f"📝 *Week 3–4: paper training* ({info['days_left']}d left)\n"
+            f"  • Virtual sim OFF — confirm trades with `/execute` (max {cap}/day)\n"
+            f"  • Paper P&L + slippage model — builds `/readiness` stats\n"
+            f"  • Live ₹5k after day {TOTAL_TRAINING_DAYS} + all gates green"
         )
     return (
-        "🎯 *Graduated mode* — shadow drills on; paper needs /execute\n"
-        "  Brain still learns from every trade you confirm"
+        "🎯 *Month complete* — check `/readiness` before live ₹5k\n"
+        "  Paper or live via `/execute` — brain still learns every close"
     )
 
 
 def learning_phase_info() -> dict:
     init_shadow_tables()
     conn = _conn()
-    first_row = conn.execute("""
-        SELECT MIN(date) FROM (
-            SELECT date FROM shadow_trades
-            UNION SELECT date FROM trades WHERE outcome IS NOT NULL
-        )
-    """).fetchone()
     shadow_total = conn.execute(
         "SELECT COUNT(*) FROM shadow_trades WHERE outcome IS NOT NULL"
     ).fetchone()[0]
@@ -182,21 +225,33 @@ def learning_phase_info() -> dict:
     ).fetchone()[0]
     conn.close()
 
-    in_phase = is_learning_phase()
-    days_left = LEARNING_PHASE_DAYS
-    if first_row and first_row[0]:
-        try:
-            first = datetime.strptime(first_row[0], '%Y-%m-%d').date()
-            elapsed = (datetime.now(IST).date() - first).days
-            days_left = max(0, LEARNING_PHASE_DAYS - elapsed)
-        except ValueError:
-            pass
+    phase = training_phase()
+    elapsed = training_elapsed_days()
+    if phase == 'SIM':
+        days_left = max(0, SIM_ONLY_DAYS - elapsed)
+        days_until_paper = days_left
+        days_until_live = max(0, TOTAL_TRAINING_DAYS - elapsed)
+    elif phase == 'PAPER':
+        days_left = max(0, TOTAL_TRAINING_DAYS - elapsed)
+        days_until_paper = 0
+        days_until_live = days_left
+    else:
+        days_left = 0
+        days_until_paper = 0
+        days_until_live = 0
 
     wr = round(shadow_wins / shadow_total * 100, 1) if shadow_total else 0
     return {
-        'in_learning_phase': in_phase,
+        'phase': phase,
+        'in_learning_phase': phase != 'LIVE_READY',
         'days_left': days_left,
-        'phase_days': LEARNING_PHASE_DAYS,
+        'days_until_paper': days_until_paper,
+        'days_until_live': days_until_live,
+        'elapsed_days': elapsed,
+        'sim_only_days': SIM_ONLY_DAYS,
+        'paper_phase_days': PAPER_PHASE_DAYS,
+        'total_training_days': TOTAL_TRAINING_DAYS,
+        'phase_days': SIM_ONLY_DAYS,
         'shadow_total': shadow_total,
         'shadow_wins': shadow_wins,
         'shadow_win_rate': wr,
@@ -571,8 +626,8 @@ def format_shadow_daily_section() -> str:
         "",
         "🎓 *Market Simulation* (memory only — no Groww)",
         f"━━━━━━━━━━━━━━━━━━━",
-        f"Phase: {'🟡 LEARNING' if info['in_learning_phase'] else '🟢 GRADUATED'} "
-        f"({info['days_left']}d left of {info['phase_days']})",
+        f"Phase: *{info['phase']}* — {info['days_left']}d left | "
+        f"paper in {info['days_until_paper']}d | live in {info['days_until_live']}d",
         f"All-time shadow: {info['shadow_total']} drills | {info['shadow_win_rate']}% win",
     ]
     if not trades:
@@ -613,9 +668,14 @@ def format_shadow_daily_section() -> str:
 def format_shadow_brief() -> str:
     """Short line for /status or morning brief."""
     info = learning_phase_info()
-    if not info['in_learning_phase']:
-        return f"🎓 Learning phase complete — precision mode (max 1 trade/day)"
+    if info['phase'] == 'LIVE_READY':
+        return "🎯 Month complete — `/readiness` before live ₹5k"
+    if info['phase'] == 'PAPER':
+        return (
+            f"📝 Paper week 3–4: {info['days_left']}d left | "
+            f"max {os.getenv('LEARNING_MAX_TRADES_DAY', '2')} trade/day via /execute"
+        )
     return (
-        f"🎓 Learning phase: {info['days_left']}d left | "
-        f"{info['shadow_total']} shadow drills | {info['shadow_win_rate']}% shadow WR"
+        f"🎓 Sim week 1–2: {info['days_left']}d left | "
+        f"{info['shadow_today']} sims today — paper unlocks in {info['days_until_paper']}d"
     )

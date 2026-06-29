@@ -206,10 +206,10 @@ def _build_sim_params(bias: str, price: float) -> dict:
 
 def evaluate_explore_setup() -> dict:
     """Score current market for a virtual CE/PE drill."""
-    from src.shadow_learning import is_learning_phase
+    from src.shadow_learning import is_sim_phase
 
-    if not SIM_ENABLED or not is_learning_phase():
-        return {'ok': False, 'reason': 'sim off or graduated'}
+    if not SIM_ENABLED or not is_sim_phase():
+        return {'ok': False, 'reason': 'sim off or past sim phase'}
 
     if STATE.get('system.paused'):
         return {'ok': False, 'reason': 'paused'}
@@ -355,11 +355,13 @@ def format_sim_status() -> str:
     closed = [t for t in explore if t.get('status') == 'CLOSED']
     wins = sum(1 for t in closed if t.get('outcome') == 'WIN')
 
-    if not info['in_learning_phase']:
-        return "🎮 Market sim: graduated — explore sims paused"
+    if info['phase'] != 'SIM':
+        if info['phase'] == 'PAPER':
+            return "🎮 Market sim: *paused* — week 3–4 paper training (`/execute`)"
+        return "🎮 Market sim: *paused* — month complete; check `/readiness`"
 
     return (
-        f"🎮 *Market sim* ({info['days_left']}d left)\n"
+        f"🎮 *Market sim* (week 1–2, {info['days_left']}d left)\n"
         f"Today: {len(explore)} drills ({len(open_e)} open) | "
         f"{wins}W / {len(closed)-wins}L closed\n"
         f"Cap: {SIM_MAX_OPEN} open, {SIM_MAX_PER_DAY}/day | "

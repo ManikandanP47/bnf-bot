@@ -127,6 +127,22 @@ class RiskAgent(threading.Thread):
                     ),
                 }
 
+        # ── Training phase: sim-only weeks block paper/live entries ──
+        try:
+            from src.shadow_learning import paper_trading_allowed, learning_phase_info
+            if not paper_trading_allowed():
+                info = learning_phase_info()
+                return {
+                    'approved': False,
+                    'reason': (
+                        f"🎓 *Week 1–2: virtual sim only*\n"
+                        f"Paper `/execute` unlocks in *{info['days_until_paper']}* day(s).\n"
+                        f"Use `/shadow` and `/ml` — bot learns with ₹0 risk."
+                    ),
+                }
+        except Exception:
+            pass
+
         # ── Manual pause check ────────────────────────────────────
         if STATE.get('system.paused'):
             return {
@@ -171,20 +187,25 @@ class RiskAgent(threading.Thread):
         max_trades   = brain.get('max_trades_day', 1)
         trades_today = brain.get('trades_today', 0)
         try:
-            from src.shadow_learning import is_learning_phase, learning_phase_info
+            from src.shadow_learning import training_phase, learning_phase_info
             from src.learning_scoreboard import post_learning_max_trades
             cap = post_learning_max_trades()
             max_trades = min(max_trades, cap)
-            if is_learning_phase():
-                info = learning_phase_info()
-                if info['days_left'] > 0:
-                    warnings.append(
-                        f"🎓 Learning phase ({info['days_left']}d left) — "
-                        f"max {cap} confirmed trade/day; shadow drills active"
-                    )
+            info = learning_phase_info()
+            phase = training_phase()
+            if phase == 'SIM':
+                warnings.append(
+                    f"🎓 Week 1–2 sim ({info['days_until_paper']}d to paper) — "
+                    f"virtual drills only, no /execute"
+                )
+            elif phase == 'PAPER':
+                warnings.append(
+                    f"📝 Week 3–4 paper ({info['days_left']}d to live window) — "
+                    f"max {cap} confirmed trade/day"
+                )
             else:
                 warnings.append(
-                    f"🎯 Graduated — precision mode max {cap} trade/day"
+                    f"🎯 Month complete — max {cap} trade/day; `/readiness` before live"
                 )
         except Exception:
             pass
