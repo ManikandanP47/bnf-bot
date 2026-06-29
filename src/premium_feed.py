@@ -23,7 +23,14 @@ def _groww_token() -> str:
     token = STATE.get('system.groww_token', '')
     if token:
         return token
-    return os.getenv('GROWW_ACCESS_TOKEN', '')
+    env = os.getenv('GROWW_ACCESS_TOKEN', '')
+    if env:
+        return env
+    try:
+        from src.groww_auth import fetch_groww_token
+        return fetch_groww_token(force_refresh=False) or ''
+    except Exception:
+        return ''
 
 
 def _option_symbol(strike: int, opt_type: str, expiry: str) -> str:

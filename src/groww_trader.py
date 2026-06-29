@@ -28,10 +28,10 @@ from src.groww_symbols import groww_option_symbol
 class GrowwTrader:
 
     def __init__(self, token: str = ''):
-        # Accept token parameter (from TOTP) or use env var as fallback
-        self.token     = token or os.getenv('GROWW_ACCESS_TOKEN', '')
-        self.paper     = os.getenv('PAPER_MODE', 'true').lower() == 'true'
-        self.groww     = None
+        self.token = token or os.getenv('GROWW_ACCESS_TOKEN', '')
+        self.paper = os.getenv('PAPER_MODE', 'true').lower() == 'true'
+        self.groww = None
+        self.connect_error = ''
 
         if GROWW_AVAILABLE and self.token and not self.paper:
             try:
@@ -39,8 +39,9 @@ class GrowwTrader:
                 self.groww = get_groww_client(self.token)
                 logger.info("Groww live mode connected")
             except Exception as e:
+                self.connect_error = str(e)
                 logger.error(f"Groww connect failed: {e}")
-                self.paper = True
+                self.groww = None
 
     def get_contract_id(self, index: str, strike: int,
                         opt_type: str, expiry: str) -> str:
@@ -66,6 +67,15 @@ class GrowwTrader:
             return self._paper_execute(
                 contract_id, qty, sl_prem, tgt_prem, expiry
             )
+
+        if not self.groww:
+            return {
+                'success': False,
+                'error': (
+                    'Groww API not connected — live buy blocked. '
+                    f'{self.connect_error[:80] if self.connect_error else "Check token / network."}'
+                ),
+            }
 
         try:
             # Step 1: Buy at market
@@ -176,8 +186,18 @@ class GrowwTrader:
     def sell_option(self, contract_id: str, qty: int,
                     reason: str = 'EXIT') -> dict:
         """Market sell — cancels smart orders first, then sells."""
-        if self.paper or not self.groww:
+        if self.paper:
             return {'success': True, 'paper': True, 'qty': qty}
+        if not self.groww:
+            return {
+                'success': False,
+                'paper': False,
+                'qty': qty,
+                'error': (
+                    'Groww API not connected — live sell blocked. '
+                    f'{self.connect_error[:80] if self.connect_error else "Close manually on Groww."}'
+                ),
+            }
 
         try:
             self._cancel_smart_orders(contract_id)

@@ -11,7 +11,7 @@ Training loop:
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 IST = pytz.timezone('Asia/Kolkata')
@@ -463,3 +463,22 @@ def format_trend_evolution_brief(shadow_id: int) -> str:
     if not row or not row[0]:
         return f"📊 {mid_n} mid-chart snapshots"
     return f"📊 Trend ({mid_n} mid snaps): {row[0][:150]}"
+
+
+def prune_old_sim_ticks(keep_days: int = 30) -> int:
+    """Delete sim_ticks older than keep_days (by shadow trade date)."""
+    cutoff = (datetime.now(IST) - timedelta(days=keep_days)).strftime('%Y-%m-%d')
+    conn = _conn()
+    try:
+        cur = conn.execute("""
+            DELETE FROM sim_ticks
+            WHERE shadow_id IN (
+                SELECT id FROM shadow_trades WHERE date < ?
+            )
+        """, (cutoff,))
+        conn.commit()
+        return cur.rowcount
+    except sqlite3.OperationalError:
+        return 0
+    finally:
+        conn.close()

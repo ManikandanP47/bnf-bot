@@ -587,6 +587,26 @@ class ExecutionAgent(threading.Thread):
 
         return {'ok': True, 'reason': 'All pre-trade checks passed ✅'}
 
+    def _reject_fake_live_fill(self, result: dict) -> dict:
+        """Block paper/fake fills when PAPER_MODE=false."""
+        if self.paper or not result.get('success'):
+            return result
+        if result.get('paper'):
+            self.messenger.send(
+                "🛑 *Live order blocked*\n\n"
+                "Groww returned a paper/fake fill in live mode.\n"
+                "_No position opened — check /groww and retry._"
+            )
+            return {'success': False, 'error': 'Fake paper fill rejected in live mode'}
+        oid = str(result.get('order_id', ''))
+        if oid.startswith('PAPER_'):
+            self.messenger.send(
+                "🛑 *Live order blocked*\n\n"
+                f"Order id `{oid}` is paper — not a real Groww fill."
+            )
+            return {'success': False, 'error': 'PAPER_ order id rejected in live mode'}
+        return result
+
     def place_order(self, params: dict) -> dict:
         """Execute order via Groww API"""
         lot_cost = params.get('lot_cost', 4500)
@@ -649,20 +669,17 @@ class ExecutionAgent(threading.Thread):
                         "⚠️ *OCO not confirmed on Groww*\n"
                         "Monitor Agent will manage exits manually."
                     )
-            return result
+            return self._reject_fake_live_fill(result)
         except Exception as e:
             error_str = str(e).lower()
             # If token expired, refresh and retry once
             if 'auth' in error_str or 'expired' in error_str or 'invalid' in error_str:
                 print(f"🔄 Token expired during order: {str(e)[:40]}")
-                # Refresh token
                 try:
-                    from agents.data_agent import DataAgent
-                    data = DataAgent()
-                    fresh_token = data.get_groww_token()
+                    from src.groww_auth import fetch_groww_token
+                    fresh_token = fetch_groww_token(force_refresh=True)
                     STATE.set('system.groww_token', fresh_token)
-                    
-                    # Retry with fresh token
+
                     from src.groww_trader import GrowwTrader
                     from src.safety import verify_order_filled
                     trader = GrowwTrader(fresh_token)
@@ -681,11 +698,11 @@ class ExecutionAgent(threading.Thread):
                             return {'success': False, 'error': fill.get('reason', 'Not filled')}
                         result['filled_qty'] = fill.get('qty', params.get('qty', 15))
                     if result.get('success'):
-                        print(f"✅ Order placed after token refresh")
-                        return result
-                except:
+                        print("✅ Order placed after token refresh")
+                        return self._reject_fake_live_fill(result)
+                except Exception:
                     pass
-            
+
             return {'success': False, 'error': str(e)}
 
     def send_trade_suggestion(self, signal: dict, risk: dict, params: dict):
@@ -996,6 +1013,13 @@ class MonitorAgent(threading.Thread):
                 position.get('expiry') or zone.get('expiry', ''),
             )
         result = trader.sell_option(cid, qty, reason)
+        if os.getenv('PAPER_MODE', 'true').lower() != 'true' and result.get('paper'):
+            self.messenger.send(
+                "🛑 *Live sell blocked*\n\n"
+                "Groww not connected — position may still be open.\n"
+                "_Close manually on Groww app immediately._"
+            )
+            return {'success': False, 'error': 'Fake paper sell rejected in live mode'}
         if result.get('success') and result.get('order_id'):
             fill = verify_order_filled(token, result['order_id'], max_wait_sec=25)
             if not fill.get('filled'):

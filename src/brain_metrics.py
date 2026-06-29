@@ -210,8 +210,8 @@ def assess_live_readiness() -> dict:
             gate('Learning phase', False,
                  f"{sh['days_left']}d left of {LEARNING_PHASE_DAYS} — shadow drills running")
         elif sh['shadow_total'] >= 5:
-            gate('Shadow drills', sh['shadow_win_rate'] >= 35,
-                 f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills)")
+            all_ok &= gate('Shadow drills', sh['shadow_win_rate'] >= 35,
+                            f"{sh['shadow_win_rate']}% shadow WR ({sh['shadow_total']} drills)")
     except Exception:
         pass
 

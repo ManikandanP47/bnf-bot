@@ -37,15 +37,19 @@ def check_data_quality(signal: dict, params: dict) -> dict:
     if os.getenv('BLOCK_STALE_PRICE_TRADES', 'true').lower() != 'true':
         return {'ok': True, 'warnings': []}
     src = STATE.get('market.data_source', '')
-    if src == 'GROWW':
+    live_sources = ('GROWW', 'GROWW_FEED', 'GROWW_HIST')
+    if src in live_sources:
         return {'ok': True, 'warnings': []}
-    return {
-        'ok': False,
-        'reason': (
-            f'🛑 Price feed is *{src or "unknown"}* (not live Groww). '
-            f'No entries on delayed data — protects against bad fills.'
-        ),
-    }
+    blocked = ('YFINANCE_FALLBACK', 'YFINANCE', 'DELTA_FALLBACK', 'DELTA_MODEL', 'UNAVAILABLE')
+    if src in blocked or not src:
+        return {
+            'ok': False,
+            'reason': (
+                f'🛑 Price feed is *{src or "unknown"}* (not live Groww). '
+                f'No entries on delayed data — protects against bad fills.'
+            ),
+        }
+    return {'ok': True, 'warnings': [f'Feed source {src} — proceeding with caution']}
 
 
 def check_cold_start_discipline(signal: dict, params: dict) -> dict:

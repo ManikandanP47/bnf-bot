@@ -11,6 +11,7 @@ import pytz
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_DIR = os.getenv('BACKUP_DIR', 'backups')
 BACKUP_KEEP_DAYS = int(os.getenv('BACKUP_KEEP_DAYS', '7'))
+SIM_TICKS_KEEP_DAYS = int(os.getenv('SIM_TICKS_KEEP_DAYS', '30'))
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 ZONE_FILE = 'daily_zone.json'
 UPTIME_ALERT_MIN = int(os.getenv('UPTIME_ALERT_MINUTES', '30'))
@@ -35,10 +36,26 @@ def run_daily_backup() -> dict:
         shutil.copy2(hb, os.path.join(dest, hb))
         copied.append(hb)
 
-    for extra in ('.groww_token_cache.json', '.groww_rate_limit.json'):
-        if os.path.exists(extra):
-            shutil.copy2(extra, os.path.join(dest, extra))
-            copied.append(extra)
+    # Rate-limit state only — never copy JWT token cache (security)
+    if os.path.exists('.groww_rate_limit.json'):
+        shutil.copy2('.groww_rate_limit.json', os.path.join(dest, '.groww_rate_limit.json'))
+        copied.append('.groww_rate_limit.json')
+
+    model_dir = os.getenv('ML_MODEL_DIR', 'models')
+    if os.path.isdir(model_dir):
+        model_dest = os.path.join(dest, 'models')
+        if os.path.exists(model_dest):
+            shutil.rmtree(model_dest, ignore_errors=True)
+        shutil.copytree(model_dir, model_dest)
+        copied.append(f'{model_dir}/')
+
+    try:
+        from src.virtual_broker import prune_old_sim_ticks
+        pruned = prune_old_sim_ticks(SIM_TICKS_KEEP_DAYS)
+        if pruned:
+            copied.append(f'sim_ticks_pruned:{pruned}')
+    except Exception:
+        pass
 
     _prune_old_backups()
 

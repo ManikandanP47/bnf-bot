@@ -106,7 +106,7 @@ class DataAgent(threading.Thread):
         return os.getenv('GROWW_ACCESS_TOKEN', '')
 
     def refresh_token_if_needed(self):
-        """Auto-refresh token once per scheduled slot (8:45, 12:45, 15:45 IST)."""
+        """Warm token at scheduled slots — uses cache; no blind TOTP refresh."""
         now = datetime.now(IST)
         slots = [(8, 45), (12, 45), (15, 45)]
         today = now.strftime('%Y-%m-%d')
@@ -117,10 +117,10 @@ class DataAgent(threading.Thread):
             key = f'system.token_refreshed_{hour:02d}{minute:02d}'
             if STATE.get(key) == today:
                 return
-            self._token = self.get_groww_token(force_refresh=True)
+            self._token = self.get_groww_token(force_refresh=False)
             STATE.set(key, today)
-            STATE.set('system.token_status', f'REFRESHED_{hour}:{minute:02d}')
-            print(f"🔑 Token refreshed at {hour}:{minute:02d}")
+            STATE.set('system.token_status', f'WARMED_{hour}:{minute:02d}')
+            print(f"🔑 Token warmed at {hour}:{minute:02d} (cache-first)")
             return
 
     def get_live_price(self) -> dict:

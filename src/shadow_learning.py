@@ -136,7 +136,7 @@ def should_auto_paper_execute() -> bool:
     During learning phase, auto-enter paper trades when all filters pass.
     After graduation, user must tap Execute (precision mode).
     """
-    if os.getenv('AUTO_PAPER_LEARNING', 'true').lower() != 'true':
+    if os.getenv('AUTO_PAPER_LEARNING', 'false').lower() != 'true':
         return False
     if os.getenv('PAPER_MODE', 'true').lower() != 'true':
         return False
@@ -499,13 +499,6 @@ def tick_shadow_trades():
         close_msg += f"🧠 {lesson[:120]}"
         _notify_telegram(close_msg)
 
-        from src.market_rag import ingest_trade_lesson
-        ctx = STATE.get('market.context') or {}
-        ingest_trade_lesson(
-            session=session or '', bias=bias or '', regime=regime or '',
-            mistake='SHADOW_' + outcome, lesson=lesson, outcome=outcome,
-            cpr_class=(ctx.get('cpr') or {}).get('width_class', ''),
-        )
         try:
             from agents.learning_agent import BRAIN
             BRAIN.record_shadow_patterns(
