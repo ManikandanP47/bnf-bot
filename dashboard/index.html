@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BNF Bot — Command Center</title>
+  <link rel="stylesheet" href="dashboard/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">📊</span>
+      <div>
+        <h1>BNF Bot Command Center</h1>
+        <p id="ts-display">Loading…</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="conn-dot" class="dot offline"></span>
+      <span id="conn-label">Connecting</span>
+      <button id="btn-refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Market -->
+    <section class="card span-2" id="market-card">
+      <h2>Live Market</h2>
+      <div class="market-hero">
+        <div class="price-block">
+          <span class="label">Bank Nifty</span>
+          <span id="m-price" class="price">—</span>
+          <span id="m-vwap" class="sub">VWAP —</span>
+        </div>
+        <div class="chips" id="m-chips"></div>
+      </div>
+      <div class="stat-row" id="m-flow"></div>
+      <div class="zone-box" id="m-zone"></div>
+    </section>
+
+    <!-- Training -->
+    <section class="card" id="training-card">
+      <h2>Training Phase</h2>
+      <div id="phase-badge" class="phase-badge">—</div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Valid SIM days</span>
+          <span id="sim-progress-text">0 / 14</span>
+        </div>
+        <div class="progress-bar"><div id="sim-progress" class="progress-fill"></div></div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Valid paper days</span>
+          <span id="paper-progress-text">0 / 14</span>
+        </div>
+        <div class="progress-bar"><div id="paper-progress" class="progress-fill paper"></div></div>
+      </div>
+      <ul class="kv-list" id="training-kv"></ul>
+    </section>
+
+    <!-- Readiness -->
+    <section class="card" id="readiness-card">
+      <h2>Live Readiness</h2>
+      <div id="readiness-status" class="readiness-pill">—</div>
+      <table class="gates-table" id="gates-table">
+        <thead><tr><th>Gate</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Scans & Evidence -->
+    <section class="card">
+      <h2>Today's Scans</h2>
+      <div class="mini-stats" id="scan-stats"></div>
+      <div id="skip-reasons" class="tag-cloud"></div>
+      <h3 class="subhead">Recent scans</h3>
+      <div class="scroll-list" id="scan-list"></div>
+    </section>
+
+    <section class="card">
+      <h2>Evidence Trail</h2>
+      <div class="mini-stats" id="evidence-stats"></div>
+      <div class="scroll-list" id="evidence-list"></div>
+    </section>
+
+    <!-- ML & Intelligence -->
+    <section class="card span-2">
+      <h2>ML Brain</h2>
+      <div class="stat-row" id="ml-stats"></div>
+    </section>
+
+    <section class="card span-2">
+      <h2>Intelligence Brief</h2>
+      <ul id="suggestions" class="suggestions"></ul>
+      <div class="two-col">
+        <div>
+          <h3 class="subhead">RAG chunks</h3>
+          <div id="rag-list" class="scroll-list"></div>
+        </div>
+        <div>
+          <h3 class="subhead">Pattern memory</h3>
+          <div id="pattern-list" class="scroll-list"></div>
+        </div>
+      </div>
+      <h3 class="subhead">Intelligence roadmap</h3>
+      <div id="roadmap" class="roadmap"></div>
+    </section>
+
+    <!-- Agents & System -->
+    <section class="card">
+      <h2>Agents</h2>
+      <div id="agent-grid" class="agent-grid"></div>
+    </section>
+
+    <section class="card">
+      <h2>Groww & Persistence</h2>
+      <ul class="kv-list" id="system-kv"></ul>
+    </section>
+  </main>
+
+  <footer>
+    Auto-refresh every 15s · <code>/api/v1/snapshot</code>
+  </footer>
+  <script src="dashboard/app.js"></script>
+</body>
+</html>

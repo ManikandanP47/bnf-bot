@@ -44,6 +44,12 @@ if [[ -f .env ]]; then
   ensure_var STRUCTURED_LOG true
   ensure_var HEALTH_ENABLED true
   ensure_var HEALTH_PORT 8080
+  if ! grep -q "^DASHBOARD_TOKEN=" .env 2>/dev/null; then
+    DASH_TOK="$(openssl rand -hex 24)"
+    echo "DASHBOARD_TOKEN=${DASH_TOK}" >> .env
+    echo "    + added DASHBOARD_TOKEN — save for dashboard URL"
+    echo "       http://$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):8080/dashboard?token=${DASH_TOK}"
+  fi
   ensure_var TELEGRAM_MIRROR_ENABLED true
   ensure_var MIN_PAPER_TRADES 20
   ensure_var MIN_WIN_RATE 56

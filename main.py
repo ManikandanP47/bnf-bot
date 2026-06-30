@@ -414,8 +414,8 @@ def main():
     print("="*55)
     msg = Messenger()
     try:
-        from src.health_server import start_health_server
-        start_health_server()
+        from src.web_server import start_web_server
+        start_web_server()
     except Exception:
         pass
     if not paper:

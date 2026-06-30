@@ -37,6 +37,14 @@ Mount a volume for `trader_brain.db` and `sim_evidence.jsonl` so container resta
 curl http://127.0.0.1:8080/health
 ```
 
+**Dashboard** (all-in-one UI — market, training, ML, evidence, intelligence):
+
+```
+http://YOUR_IP:8080/dashboard?token=YOUR_DASHBOARD_TOKEN
+```
+
+Set `DASHBOARD_TOKEN` in `.env`. API: `GET /api/v1/snapshot?token=...`
+
 Point UptimeRobot at `http://YOUR_IP:8080/health` (open port 8080 in firewall if needed).
 
 ## Offsite backup (weekly cron on server)

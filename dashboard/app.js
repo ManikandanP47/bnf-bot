@@ -1,0 +1,238 @@
+(function () {
+  const REFRESH_MS = 15000;
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token') || '';
+
+  function apiUrl(path) {
+    const q = token ? `?token=${encodeURIComponent(token)}` : '';
+    return path + q;
+  }
+
+  function fmt(n, dec) {
+    if (n == null || n === '') return '—';
+    return Number(n).toLocaleString('en-IN', {
+      minimumFractionDigits: dec ?? 0,
+      maximumFractionDigits: dec ?? 0,
+    });
+  }
+
+  function chip(text, cls) {
+    return `<span class="chip ${cls || ''}">${text}</span>`;
+  }
+
+  function stat(k, v) {
+    return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  }
+
+  function renderMarket(m) {
+    document.getElementById('m-price').textContent = m.price ? fmt(m.price, 2) : '—';
+    const above = m.above_vwap;
+    const vwapTxt = m.vwap
+      ? `VWAP ${fmt(m.vwap, 2)}${above === true ? ' ▲ above' : above === false ? ' ▼ below' : ''}`
+      : 'VWAP —';
+    document.getElementById('m-vwap').textContent = vwapTxt;
+
+    const chips = [];
+    chips.push(chip(m.session || 'CLOSED', m.session === 'CLOSED' ? 'warn' : ''));
+    if (m.regime) chips.push(chip(m.regime));
+    if (m.data_source) chips.push(chip(m.data_source));
+    if (m.market_open) chips.push(chip('MARKET OPEN', 'bull'));
+    if (m.paused) chips.push(chip('PAUSED', 'warn'));
+    document.getElementById('m-chips').innerHTML = chips.join('');
+
+    const flow = m.flow || {};
+    document.getElementById('m-flow').innerHTML = [
+      stat('RSI 5m', fmt(m.rsi_5m, 1)),
+      stat('RSI 1m', fmt(m.rsi_1m, 1)),
+      stat('Flow', fmt(m.flow_score, 2)),
+      stat('VIX', flow.vix != null ? fmt(flow.vix, 2) : '—'),
+      stat('PCR', flow.pcr != null ? fmt(flow.pcr, 2) : '—'),
+      stat('EMA', flow.ema || '—'),
+    ].join('');
+
+    const z = m.zone || {};
+    const zoneEl = document.getElementById('m-zone');
+    if (z.active) {
+      zoneEl.className = 'zone-box active';
+      zoneEl.innerHTML =
+        `<strong>${z.bias || 'ZONE'}</strong> · ${fmt(z.low)} – ${fmt(z.high)}` +
+        (z.option ? `<br><span style="color:var(--muted)">${z.option}</span>` : '');
+    } else {
+      zoneEl.className = 'zone-box';
+      zoneEl.textContent = 'No active zone — evening scan sets tomorrow plan.';
+    }
+  }
+
+  function renderTraining(t) {
+    document.getElementById('phase-badge').textContent = t.phase || '—';
+
+    const simPct = t.valid_sim_required
+      ? Math.min(100, (t.valid_sim_days / t.valid_sim_required) * 100)
+      : 0;
+    document.getElementById('sim-progress').style.width = simPct + '%';
+    document.getElementById('sim-progress-text').textContent =
+      `${t.valid_sim_days || 0} / ${t.valid_sim_required || 14}`;
+
+    const paperPct = t.valid_paper_required
+      ? Math.min(100, (t.valid_paper_days / t.valid_paper_required) * 100)
+      : 0;
+    document.getElementById('paper-progress').style.width = paperPct + '%';
+    document.getElementById('paper-progress-text').textContent =
+      `${t.valid_paper_days || 0} / ${t.valid_paper_required || 14}`;
+
+    const c = t.counts || {};
+    document.getElementById('training-kv').innerHTML = [
+      ['Shadow today', t.shadow_today ?? 0],
+      ['Days until paper', t.days_until_paper ?? '—'],
+      ['Days until live', t.days_until_live ?? '—'],
+      ['Today valid', t.today_valid ? '✓' : '✗'],
+      ['Scans today', c.scans ?? 0],
+      ['Evidence events', c.events ?? 0],
+    ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
+  }
+
+  function renderReadiness(r) {
+    const el = document.getElementById('readiness-status');
+    if (r.ready) {
+      el.className = 'readiness-pill ready';
+      el.textContent = '✓ READY FOR LIVE';
+    } else {
+      el.className = 'readiness-pill not-ready';
+      el.textContent = '✗ NOT READY' + (r.reason ? ' — ' + r.reason : '');
+    }
+    const tbody = document.querySelector('#gates-table tbody');
+    const gates = r.gates || [];
+    tbody.innerHTML = gates.map((g) => {
+      const ok = g.pass || g.ok;
+      return `<tr>
+        <td>${g.name || g.gate || ''}</td>
+        <td class="${ok ? 'pass' : 'fail'}">${ok ? 'PASS' : 'FAIL'}</td>
+        <td>${g.detail || g.value || ''}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderScans(s) {
+    document.getElementById('scan-stats').innerHTML = [
+      stat('Total', s.total ?? 0),
+      stat('Opens', s.opens ?? 0),
+      stat('Skips', s.skips ?? 0),
+    ].join('');
+
+    const reasons = s.skip_reasons || {};
+    document.getElementById('skip-reasons').innerHTML = Object.entries(reasons)
+      .map(([k, v]) => `<span class="tag">${k}: ${v}</span>`)
+      .join('');
+
+    const recent = s.recent || [];
+    document.getElementById('scan-list').innerHTML = recent.length
+      ? recent.slice().reverse().map((row) => {
+          const t = (row.time || row.ts || '').slice(11, 19);
+          return `<div class="row">${t} ${row.event} ${row.reason || ''} ${row.bias || ''}</div>`;
+        }).join('')
+      : '<div class="row" style="color:var(--muted)">No scans logged today</div>';
+  }
+
+  function renderEvidence(tail, counts) {
+    document.getElementById('evidence-stats').innerHTML = stat(
+      'Events today',
+      (counts && counts.events) ?? tail.length
+    );
+    document.getElementById('evidence-list').innerHTML = tail.length
+      ? tail.slice().reverse().map((e) => {
+          const t = (e.ts || e.time || '').slice(11, 19);
+          return `<div class="row">${t} ${e.event || e.type} ${e.detail || e.reason || ''}</div>`;
+        }).join('')
+      : '<div class="row" style="color:var(--muted)">No evidence yet today</div>';
+  }
+
+  function renderML(ml) {
+    const meta = ml.meta || {};
+    document.getElementById('ml-stats').innerHTML = [
+      stat('Samples', ml.samples ?? 0),
+      stat('Active', ml.active || meta.active || 'none'),
+      stat('CV accuracy', (ml.cv_accuracy ?? meta.cv_accuracy ?? 0) + '%'),
+      stat('RF min', ml.rf_min ?? 15),
+      stat('NN min', ml.nn_min ?? 100),
+    ].join('');
+  }
+
+  function renderIntelligence(intel) {
+    document.getElementById('suggestions').innerHTML = (intel.suggestions || [])
+      .map((s) => `<li>${s}</li>`)
+      .join('') || '<li style="opacity:0.6">No suggestions yet</li>';
+
+    document.getElementById('rag-list').innerHTML = (intel.rag_chunks || []).length
+      ? intel.rag_chunks.map((c) =>
+          `<div class="row">[${c.score}] ${c.content}</div>`
+        ).join('')
+      : '<div class="row" style="color:var(--muted)">RAG warming up</div>';
+
+    document.getElementById('pattern-list').innerHTML = (intel.patterns || []).length
+      ? intel.patterns.map((p) =>
+          `<div class="row">${p.key} · ${p.wr}% WR · n=${p.samples} · ₹${fmt(p.pnl)}</div>`
+        ).join('')
+      : '<div class="row" style="color:var(--muted)">No patterns yet</div>';
+
+    document.getElementById('roadmap').innerHTML = (intel.roadmap || [])
+      .map((r) =>
+        `<div class="roadmap-item ${r.status}"><div class="title">${r.title}</div>${r.detail}</div>`
+      ).join('');
+  }
+
+  function renderAgents(a) {
+    const agents = a.agents || {};
+    document.getElementById('agent-grid').innerHTML = Object.entries(agents)
+      .map(([name, st]) => {
+        const ok = st === 'running' || st === 'ok' || st === true;
+        return `<div class="agent ${ok ? 'ok' : 'err'}">${name}: ${st}</div>`;
+      }).join('') || '<div class="agent">No agent data</div>';
+  }
+
+  function renderSystem(groww, persist, line) {
+    const feed = (groww && groww.feed) || {};
+    document.getElementById('system-kv').innerHTML = [
+      ['Data source', groww.data_source || '—'],
+      ['Token cache', groww.token_cache_age_sec >= 0 ? groww.token_cache_age_sec + 's' : 'none'],
+      ['Feed status', feed.status || feed.state || '—'],
+      ['DB', persist.db_exists ? '✓' : '✗'],
+      ['Lessons', persist.lessons ?? 0],
+      ['Patterns', persist.pattern_memory ?? 0],
+      ['Shadow trades', persist.shadow_trades ?? 0],
+      ['Persistence', line || '—'],
+    ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
+  }
+
+  function setConn(ok) {
+    const dot = document.getElementById('conn-dot');
+    const label = document.getElementById('conn-label');
+    dot.className = 'dot ' + (ok ? 'online' : 'offline');
+    label.textContent = ok ? 'Live' : 'Offline';
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(apiUrl('/api/v1/snapshot'));
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+      setConn(true);
+      document.getElementById('ts-display').textContent = d.ts_display || d.ts || '';
+      renderMarket(d.market || {});
+      renderTraining(d.training || {});
+      renderReadiness(d.readiness || {});
+      renderScans(d.scans || {});
+      renderEvidence(d.evidence_tail || [], (d.training || {}).counts);
+      renderML(d.ml || {});
+      renderIntelligence(d.intelligence || {});
+      renderAgents(d.agents || {});
+      renderSystem(d.groww, d.persistence || {}, d.persistence_line);
+    } catch (e) {
+      setConn(false);
+      document.getElementById('conn-label').textContent = 'Error: ' + e.message;
+    }
+  }
+
+  document.getElementById('btn-refresh').addEventListener('click', refresh);
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+})();
