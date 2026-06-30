@@ -42,8 +42,6 @@ def format_market_pulse() -> str:
     session = STATE.get('market.session', 'CLOSED')
     zone = STATE.get('zone', {})
     paused = STATE.get('system.paused', False)
-    agents = STATE.get('system.agent_status', {})
-    running = sum(1 for v in agents.values() if v == 'RUNNING')
     pos = STATE.get('position.open', False)
 
     lines = [
@@ -51,7 +49,7 @@ def format_market_pulse() -> str:
         f"━━━━━━━━━━━━━━━━━━━",
         f"BNF: *{price:,.0f}* ({source}) | {session}",
         _zone_status(price, zone),
-        f"Bot: {'⏸️ Paused' if paused else '▶️ Active'} | Agents {running}/7 ✅",
+        f"Bot: {'⏸️ Paused' if paused else '▶️ Active'} | {STATE.format_agent_count_line()}",
     ]
 
     try:

@@ -128,12 +128,15 @@ class SharedState:
                 'week_start':     '',      # Track which week
                 'week_pnl':       0.0,     # Cumulative week P&L for loss cap
                 'agent_status': {
-                    'data':      'STARTING',
-                    'analysis':  'STARTING',
-                    'risk':      'STARTING',
-                    'execution': 'STARTING',
-                    'monitor':   'STARTING',
-                    'learning':  'STARTING',
+                    'data':        'STARTING',
+                    'groww_feed':  'STARTING',
+                    'analysis':    'STARTING',
+                    'risk':        'STARTING',
+                    'execution':   'STARTING',
+                    'monitor':     'STARTING',
+                    'learning':    'STARTING',
+                    'sim':         'STARTING',
+                    'telegram':    'STARTING',
                 }
             }
         }
@@ -176,6 +179,16 @@ class SharedState:
     def set_agent_status(self, agent: str, status: str):
         with self._lock:
             self._state['system']['agent_status'][agent] = status
+
+    def format_agent_count_line(self) -> str:
+        """e.g. Agents 9/9 ✅ — dynamic, not hardcoded."""
+        agents = self._state['system'].get('agent_status', {})
+        total = len(agents)
+        running = sum(1 for v in agents.values() if v == 'RUNNING')
+        if total == 0:
+            return 'Agents —'
+        mark = '✅' if running == total else '⚠️'
+        return f'Agents {running}/{total} {mark}'
 
     def add_error(self, error: str):
         with self._lock:

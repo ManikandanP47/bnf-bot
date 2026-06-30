@@ -364,6 +364,7 @@ class CommandListener(threading.Thread):
 
     def run(self):
         print("📱 Command Listener started")
+        STATE.set_agent_status('telegram', 'RUNNING')
         while STATE.get('system.running'):
             try:
                 updates = self._get_updates()
