@@ -59,14 +59,13 @@ class _WebHandler(BaseHTTPRequestHandler):
                 return
             return self._serve_file('index.html', 'text/html')
 
+        # CSS/JS are public (no secrets); API + HTML page stay token-protected
         if path.startswith('/dashboard/'):
-            if not _authorized(self):
-                self.send_response(401)
-                self.end_headers()
-                return
             rel = path[len('/dashboard/'):]
-            ctype = 'application/javascript' if rel.endswith('.js') else 'text/css'
-            return self._serve_file(rel, ctype)
+            if rel.endswith('.css'):
+                return self._serve_file(rel, 'text/css')
+            if rel.endswith('.js'):
+                return self._serve_file(rel, 'application/javascript')
 
         self.send_response(404)
         self.end_headers()
