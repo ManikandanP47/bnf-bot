@@ -147,10 +147,17 @@ def format_daily_sim_training_report() -> str:
         lines += [
             "",
             "📭 No virtual trades today.",
-            "Bot scanned live flow but no setup scored high enough.",
             f"_Cumulative sim WR: {phase_stats['win_rate']}% "
             f"({phase_stats['total']} drills)_",
         ]
+        try:
+            from src.sim_scan_journal import format_sim_day_visibility
+            vis = format_sim_day_visibility(compact=True)
+            # Skip duplicate header — append body after first line block
+            vis_body = '\n'.join(vis.split('\n')[2:])
+            lines += ["", vis_body]
+        except Exception:
+            lines.append("Bot scanned live flow but no setup scored high enough.")
         return '\n'.join(lines)
 
     lines.append(f"\n📋 *Today's sims: {len(closed)} closed | {len(open_t)} open*")
@@ -208,8 +215,20 @@ def format_daily_sim_training_report() -> str:
         for p in patterns[:4]:
             lines.append(f"  {p['key']}: {p['wr']}% ({p['samples']} samples)")
 
+    try:
+        from src.sim_scan_journal import get_today_scans
+        from collections import Counter
+        scans = [s for s in get_today_scans() if s['event'] != 'COOLDOWN']
+        if scans:
+            skips = Counter(s['reason'] for s in scans if s['event'] == 'SKIP')
+            lines.append(f"\n🔍 *Scan log:* {len(scans)} evaluations today")
+            for reason, n in skips.most_common(3):
+                lines.append(f"  skipped {reason}: {n}×")
+    except Exception:
+        pass
+
     lines.append(
-        "\n_Type /shadow for full list | /readiness before live ₹5k_"
+        "\n_Type /simday for full scan log | /shadow | /readiness before live ₹5k_"
     )
     return '\n'.join(lines)
 

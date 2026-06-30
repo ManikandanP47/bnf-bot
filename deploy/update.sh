@@ -36,6 +36,7 @@ if [[ -f .env ]]; then
   ensure_var POST_LEARNING_MAX_TRADES_DAY 2
   ensure_var SHADOW_MIN_WR 40
   ensure_var SIM_TELEGRAM_QUIET true
+  ensure_var SIM_SCAN_LOG true
   ensure_var TELEGRAM_MIRROR_ENABLED true
   ensure_var MIN_PAPER_TRADES 20
   ensure_var MIN_WIN_RATE 56

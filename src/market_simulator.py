@@ -204,15 +204,25 @@ def _build_sim_params(bias: str, price: float) -> dict:
     }
 
 
+def _attach_snapshot(result: dict) -> dict:
+    """Add market context for scan journal / visibility reports."""
+    try:
+        from src.sim_scan_journal import market_snapshot
+        result['snapshot'] = market_snapshot()
+    except Exception:
+        pass
+    return result
+
+
 def evaluate_explore_setup() -> dict:
     """Score current market for a virtual CE/PE drill."""
     from src.shadow_learning import is_sim_phase
 
     if not SIM_ENABLED or not is_sim_phase():
-        return {'ok': False, 'reason': 'sim off or past sim phase'}
+        return _attach_snapshot({'ok': False, 'reason': 'sim off or past sim phase'})
 
     if STATE.get('system.paused'):
-        return {'ok': False, 'reason': 'paused'}
+        return _attach_snapshot({'ok': False, 'reason': 'paused'})
 
     price = STATE.get('market.price', 0)
     c5m = STATE.get('market.candles_5m', [])
@@ -224,25 +234,52 @@ def evaluate_explore_setup() -> dict:
     flow = STATE.get('market.flow') or STATE.get('signals.market_flow') or {}
 
     if price <= 0 or len(c5m) < 5:
-        return {'ok': False, 'reason': 'warming up'}
+        return _attach_snapshot({
+            'ok': False,
+            'reason': f"warming up ({len(c5m)}/5 candles)",
+            'sim_score': 0,
+        })
 
     now = datetime.now(IST)
     if not (dtime(9, 20) <= now.time() <= dtime(14, 45)):
-        return {'ok': False, 'reason': 'outside sim window'}
+        return _attach_snapshot({'ok': False, 'reason': 'outside sim window'})
 
     bias = _determine_bias(flow, c15m, zone)
     if bias not in ('BULLISH', 'BEARISH'):
-        return {'ok': False, 'reason': 'no clear bias'}
+        return _attach_snapshot({
+            'ok': False,
+            'reason': 'no clear bias',
+            'bias': bias or 'NEUTRAL',
+            'sim_score': 0,
+        })
 
     scored = _score_opportunity(price, bias, session, c5m, flow, zone, vwap, rsi)
     if not scored['ok']:
-        return {'ok': False, 'reason': f"score {scored['sim_score']}<{SIM_MIN_SCORE}"}
+        return _attach_snapshot({
+            'ok': False,
+            'reason': f"score {scored['sim_score']}<{SIM_MIN_SCORE}",
+            'bias': bias,
+            'sim_score': scored['sim_score'],
+            'reasons': scored['reasons'],
+            'session': session,
+            'price': price,
+            'flow_score': flow.get('flow_score', 0),
+        })
 
     params = _build_sim_params(bias, price)
     if not params.get('premium'):
-        return {'ok': False, 'reason': 'no premium'}
+        return _attach_snapshot({
+            'ok': False,
+            'reason': 'no premium (Groww LTP required)',
+            'bias': bias,
+            'sim_score': scored['sim_score'],
+            'reasons': scored['reasons'],
+            'session': session,
+            'price': price,
+            'flow_score': flow.get('flow_score', 0),
+        })
 
-    return {
+    return _attach_snapshot({
         'ok': True,
         'bias': bias,
         'price': price,
@@ -252,7 +289,7 @@ def evaluate_explore_setup() -> dict:
         'reasons': scored['reasons'],
         'params': params,
         'flow_score': flow.get('flow_score', 0),
-    }
+    })
 
 
 def open_explore_sim(setup: dict) -> dict:
@@ -338,11 +375,34 @@ def scan_and_maybe_open() -> dict:
     _last_scan_at = now
     setup = evaluate_explore_setup()
     if not setup.get('ok'):
-        return {'scanned': True, 'opened': False, 'reason': setup.get('reason')}
+        result = {
+            'scanned': True,
+            'opened': False,
+            'reason': setup.get('reason'),
+            'sim_score': setup.get('sim_score', 0),
+            'bias': setup.get('bias', ''),
+            'reasons': setup.get('reasons', []),
+            'snapshot': setup.get('snapshot'),
+        }
+        _log_scan(result)
+        return result
 
     result = open_explore_sim(setup)
     result['scanned'] = True
+    result['sim_score'] = setup.get('sim_score', 0)
+    result['bias'] = setup.get('bias', '')
+    result['reasons'] = setup.get('reasons', [])
+    result['snapshot'] = setup.get('snapshot')
+    _log_scan(result)
     return result
+
+
+def _log_scan(result: dict):
+    try:
+        from src.sim_scan_journal import log_sim_scan
+        log_sim_scan(result)
+    except Exception:
+        pass
 
 
 def format_sim_status() -> str:

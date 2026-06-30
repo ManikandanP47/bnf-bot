@@ -462,6 +462,11 @@ def main():
             init_knowledge_base()
             init_shadow_tables()
             init_virtual_broker_tables()
+            try:
+                from src.sim_scan_journal import init_sim_scan_table
+                init_sim_scan_table()
+            except Exception:
+                pass
             tok = STATE.get('system.groww_token', '') or fetch_groww_token()
             if tok:
                 refresh_market_context(tok)
