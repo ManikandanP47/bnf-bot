@@ -312,7 +312,8 @@ def scheduler(messenger: Messenger):
                 pass
 
             from src.safety import update_heartbeat
-            if 9 <= hour <= 16:
+            # Keep heartbeat fresh on trading days (process alive even pre/post market)
+            if weekday < 5:
                 update_heartbeat()
 
             # Refresh /status readiness line (heavy DB work — not on every command)
@@ -415,6 +416,9 @@ def main():
         hydrate_brain_daily_state()
     except Exception:
         pass
+    from src.safety import update_heartbeat
+    update_heartbeat()
+
     print("\n🚀 Starting agents...")
     agents = [
         DataAgent(),

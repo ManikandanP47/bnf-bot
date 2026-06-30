@@ -88,29 +88,39 @@ def format_backup_status() -> str:
 def check_uptime_and_alert(messenger, last_alert_day: int) -> int:
     """
     Alert once per day if heartbeat stale during market hours.
-    Returns updated last_alert_day (day of month when alert sent).
+    Ignores overnight gaps (last beat at yesterday's close is normal).
     """
-    from src.safety import check_trading_day
+    from src.safety import check_trading_day, update_heartbeat
 
     now = datetime.now(IST)
     if not check_trading_day().get('trade'):
         return last_alert_day
-    if not (9 <= now.hour <= 15 or (now.hour == 15 and now.minute <= 30)):
+    # Only check after market open — not at 9:00 pre-market
+    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now < market_open or now > market_close:
         return last_alert_day
 
     try:
         if not os.path.exists('heartbeat.json'):
+            update_heartbeat()
             return last_alert_day
         with open('heartbeat.json') as f:
             hb = json.load(f)
         last_ts = datetime.fromisoformat(hb.get('timestamp', ''))
         if last_ts.tzinfo is None:
             last_ts = IST.localize(last_ts)
-        silence = (now - last_ts).total_seconds() / 60
+
+        # Overnight gap is expected — measure silence from today's open only
+        if last_ts < market_open:
+            silence = (now - market_open).total_seconds() / 60
+        else:
+            silence = (now - last_ts).total_seconds() / 60
+
         if silence >= UPTIME_ALERT_MIN and last_alert_day != now.day:
             messenger.send(
                 f"🚨 *Bot uptime alert*\n\n"
-                f"No heartbeat for *{int(silence)} min* during market hours.\n"
+                f"No heartbeat for *{int(silence)} min* since market open.\n"
                 f"Last seen: {hb.get('last_seen', '?')}\n\n"
                 f"Check server: `systemctl status bnf-bot`\n"
                 f"_If a trade is open, check Groww manually._"
