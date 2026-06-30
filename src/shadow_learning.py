@@ -137,6 +137,11 @@ def _first_activity_date():
 
 
 def training_elapsed_days() -> int:
+    try:
+        from src.training_calendar import training_elapsed_days as _ted
+        return _ted()
+    except Exception:
+        pass
     first = _first_activity_date()
     if not first:
         return 0
@@ -144,7 +149,20 @@ def training_elapsed_days() -> int:
 
 
 def training_phase() -> str:
-    """SIM (week 1–2) → PAPER (week 3–4) → LIVE_READY (month done)."""
+    """SIM (Jul 1–15) → PAPER (Jul 16–31) → LIVE_READY (Aug+)."""
+    try:
+        from src.training_calendar import (
+            training_day_number, TRAINING_MONTH_DAYS, SIM_ONLY_DAYS,
+        )
+        d = training_day_number()
+        if d == 0:
+            return 'SIM'
+        if d <= SIM_ONLY_DAYS:
+            return 'SIM'
+        if d <= TRAINING_MONTH_DAYS:
+            return 'PAPER'
+    except Exception:
+        pass
     if USE_VALID_TRAINING_DAYS:
         try:
             from src.valid_training_days import get_valid_day_counts
@@ -153,7 +171,6 @@ def training_phase() -> str:
                 return 'SIM'
             if vd['paper_valid'] < PAPER_PHASE_DAYS:
                 return 'PAPER'
-            return 'LIVE_READY'
         except Exception:
             pass
     elapsed = training_elapsed_days()
@@ -242,18 +259,27 @@ def learning_phase_info() -> dict:
 
     phase = training_phase()
     elapsed = training_elapsed_days()
-    if phase == 'SIM':
-        days_left = max(0, SIM_ONLY_DAYS - elapsed)
-        days_until_paper = days_left
-        days_until_live = max(0, TOTAL_TRAINING_DAYS - elapsed)
-    elif phase == 'PAPER':
-        days_left = max(0, TOTAL_TRAINING_DAYS - elapsed)
-        days_until_paper = 0
-        days_until_live = days_left
-    else:
-        days_left = 0
-        days_until_paper = 0
-        days_until_live = 0
+    try:
+        from src.training_calendar import (
+            training_day_number, days_until_paper_calendar,
+            days_until_live_calendar,
+        )
+        days_until_paper = days_until_paper_calendar()
+        days_until_live = days_until_live_calendar()
+        days_left = days_until_live
+    except Exception:
+        if phase == 'SIM':
+            days_left = max(0, SIM_ONLY_DAYS - elapsed)
+            days_until_paper = days_left
+            days_until_live = max(0, TOTAL_TRAINING_DAYS - elapsed)
+        elif phase == 'PAPER':
+            days_left = max(0, TOTAL_TRAINING_DAYS - elapsed)
+            days_until_paper = 0
+            days_until_live = days_left
+        else:
+            days_left = 0
+            days_until_paper = 0
+            days_until_live = 0
 
     wr = round(shadow_wins / shadow_total * 100, 1) if shadow_total else 0
     return {

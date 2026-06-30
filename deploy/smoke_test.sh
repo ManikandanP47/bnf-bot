@@ -44,6 +44,19 @@ except Exception as e:
     errors.append(f'agents import: {e}')
 
 try:
+    from src.training_calendar import verify_training_stack, bootstrap_training_month
+    bootstrap_training_month()
+    v = verify_training_stack()
+    if not v.get('all_ok'):
+        errors.append('training stack: ' + ','.join(f['name'] for f in v.get('failed', [])))
+except Exception as e:
+    errors.append(f'training calendar: {e}')
+
+try:
+    from src.dashboard_api import build_dashboard_payload
+    p = build_dashboard_payload()
+    assert 'sim_wallet' in p
+    assert 'training' in p
     from src.training_dashboard import format_training_dashboard
     format_training_dashboard()
 except Exception as e:

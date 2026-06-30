@@ -3,23 +3,35 @@
 
 def format_startup_message(paper: bool) -> str:
     mode = '📝 Paper (confirm each trade)' if paper else '💸 Live'
+    try:
+        from src.training_calendar import (
+            TRAINING_START_DATE, TRAINING_MONTH_DAYS, training_day_number,
+            verify_training_stack, is_pre_training,
+        )
+        d = training_day_number()
+        v = verify_training_stack()
+        stack = '✅' if v.get('all_ok') else '⚠️'
+        if is_pre_training():
+            plan = f"⏳ Training starts *{TRAINING_START_DATE}* ({TRAINING_MONTH_DAYS} days)"
+        elif d > 0:
+            plan = f"🎓 *July training day {d}/{TRAINING_MONTH_DAYS}* {stack}"
+        else:
+            plan = f"🎓 *{TRAINING_MONTH_DAYS}-day training* {stack}"
+    except Exception:
+        plan = '🎓 *July training month* — sim → paper → live'
     return (
         f"🚀 *Multi-Agent Bot Started*\n\n"
         f"Mode: {mode}\n"
         f"Agents: All 9 running ✅\n"
-        f"Pre-market: 9:00 AM | Flow: 9:25 AM | Evening scan: 8:15 PM IST\n\n"
-        f"🎮 *4-week plan* — wk 1–2 virtual sim (₹0) → wk 3–4 paper `/execute` → live\n"
-        f"📡 WebSocket feed + live-like fills (spread + slip)\n\n"
-        f"✑ *Quick commands*\n"
-        f"🎛 /pause /resume /stop — Control bot\n"
-        f"✅ /execute /skip — Confirm or skip trade\n"
-        f"📊 /status /pnl /zone — Health & P&L\n"
-        f"📓 /journal /readiness /funnel — Paper journal & live gates\n"
-        f"📈 /context /cpr /flow /today — Levels, OI, AI dashboard\n"
-        f"🎓 /training /shadow /simday /evidence — Virtual drills & brain\n"
-        f"🔌 /groww /why /backtest — API health, blocks, history\n"
-        f"❓ /help — Full list with explanations\n\n"
-        f"_Week 1–2: sim only. Week 3–4: paper (2/day). Live after month + /readiness ✅_ 🛡️"
+        f"{plan}\n"
+        f"Pre-market: 9:00 | Observer: 9:16 | Flow: 9:25 | Evening: 8:15 PM IST\n\n"
+        f"*July plan*\n"
+        f"  Jul 1–15: SIM — ₹10k wallet, multi-order, recovery, Greeks\n"
+        f"  Jul 16–31: PAPER `/execute` (PAPER_MODE stays true)\n"
+        f"  Aug 1+: Live only if `/readiness` ✅\n\n"
+        f"📊 Dashboard: Sim & Learning tab\n"
+        f"🎓 /training /recovery /shadow /simday\n\n"
+        f"_No live ₹5k until training month + gates pass._ 🛡️"
     )
 
 

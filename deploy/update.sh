@@ -29,9 +29,11 @@ if [[ -f .env ]]; then
   ensure_var SIM_SCAN_MINUTES 4
   ensure_var SIM_MAX_OPEN 2
   ensure_var SIM_MIN_GAP_MIN 8
-  ensure_var SIM_ONLY_DAYS 14
-  ensure_var PAPER_PHASE_DAYS 14
-  ensure_var LEARNING_PHASE_DAYS 14
+  ensure_var SIM_ONLY_DAYS 15
+  ensure_var PAPER_PHASE_DAYS 15
+  ensure_var TRAINING_START_DATE 2026-07-01
+  ensure_var TRAINING_MONTH_DAYS 30
+  ensure_var LEARNING_PHASE_DAYS 15
   ensure_var LEARNING_MAX_TRADES_DAY 2
   ensure_var POST_LEARNING_MAX_TRADES_DAY 2
   ensure_var SHADOW_MIN_WR 40
@@ -48,7 +50,7 @@ if [[ -f .env ]]; then
   ensure_var RECOVERY_ENABLED true
   ensure_var RECOVERY_MIN_SCORE 9
   ensure_var RECOVERY_MAX_LOSS_RS 450
-  ensure_var RECOVERY_MAX_PER_WEEK 1
+  ensure_var RECOVERY_MAX_PER_WEEK 2
   ensure_var RECOVERY_SL_PCT 0.22
   ensure_var SIM_WALLET_WEEK1_RS 10000
   ensure_var SIM_WALLET_WEEK2_RS 12500
@@ -58,7 +60,7 @@ if [[ -f .env ]]; then
   ensure_var SIM_WALLET_MAX_OPEN 2
   ensure_var SIM_MULTI_FROM_WEEK1 true
   ensure_var SIM_WALLET_DAILY_LOSS_PCT 0.02
-  ensure_var RECOVERY_MAX_PER_WEEK 2
+  ensure_var PAPER_MODE true
   ensure_var SIM_EVIDENCE_JSONL true
   ensure_var SIM_EVIDENCE_FILE sim_evidence.jsonl
   ensure_var USE_VALID_TRAINING_DAYS true

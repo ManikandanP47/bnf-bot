@@ -194,6 +194,17 @@ class ExecutionAgent(threading.Thread):
         """Execute order via Groww API"""
         lot_cost = params.get('lot_cost', 4500)
         if not self.paper:
+            try:
+                from src.training_calendar import training_day_number, TRAINING_MONTH_DAYS
+                if training_day_number() <= TRAINING_MONTH_DAYS:
+                    self.messenger.send(
+                        f"🛑 *Live order blocked — July training month*\n\n"
+                        f"Day {training_day_number()}/{TRAINING_MONTH_DAYS}: "
+                        f"SIM + paper only. No live ₹5k until August + `/readiness` ✅"
+                    )
+                    return {'success': False, 'error': 'Training month — live blocked'}
+            except Exception:
+                pass
             from src.brain_metrics import assess_live_readiness
             from src.capital_guard import LIVE_CAPITAL_RS
             ready = assess_live_readiness()

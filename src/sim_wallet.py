@@ -39,29 +39,38 @@ def _today() -> str:
 
 
 def get_training_week() -> dict:
-    """Training week number (1+) and start date from first bot activity."""
-    try:
-        from src.shadow_learning import _first_activity_date
-        first = _first_activity_date()
-    except Exception:
-        first = None
-    if not first:
-        first = datetime.now(IST).date()
-    today = datetime.now(IST).date()
-    days_elapsed = max(0, (today - first).days)
-    week_num = min(len(WEEKLY_CAPITAL), max(1, days_elapsed // 7 + 1))
-    week_start = first + timedelta(days=(week_num - 1) * 7)
-    next_week_base_rs = (
-        WEEKLY_CAPITAL[week_num] if week_num < len(WEEKLY_CAPITAL)
-        else WEEKLY_CAPITAL[-1]
+    """Training week from official calendar (not pre-July DB noise)."""
+    from src.training_calendar import (
+        training_anchor_date, training_week_number, training_day_number,
+        days_until_start, TRAINING_START_DATE,
     )
+    anchor = training_anchor_date()
+    today = datetime.now(IST).date()
+    if today < anchor:
+        return {
+            'week': 1,
+            'week_start': anchor.isoformat(),
+            'week_start_display': anchor.strftime('%d %b'),
+            'days_in_week': 0,
+            'week_base_rs': week_base_capital(1),
+            'next_week_base_rs': week_base_capital(2),
+            'pre_start': True,
+            'starts_in_days': days_until_start(),
+            'start_date': TRAINING_START_DATE,
+        }
+    days = (today - anchor).days
+    week_num = training_week_number()
+    week_start = anchor + timedelta(days=(week_num - 1) * 7)
+    next_w = min(week_num + 1, len(WEEKLY_CAPITAL))
     return {
         'week': week_num,
         'week_start': week_start.isoformat(),
         'week_start_display': week_start.strftime('%d %b'),
         'days_in_week': (today - week_start).days + 1,
         'week_base_rs': week_base_capital(week_num),
-        'next_week_base_rs': next_week_base_rs,
+        'next_week_base_rs': week_base_capital(next_w),
+        'training_day': training_day_number(),
+        'pre_start': False,
     }
 
 

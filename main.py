@@ -177,6 +177,8 @@ def scheduler(messenger: Messenger):
     last_groww_alert = -1
     last_evidence_alert = -1
     last_observer       = -1
+    last_training_kick  = -1
+    last_training_daily = -1
 
     while STATE.get('system.running'):
         try:
@@ -229,6 +231,14 @@ def scheduler(messenger: Messenger):
 
             # 9:25 AM — auto F&O flow (OI, VIX, EMA, chart lines)
             last_morning_flow = send_morning_flow_if_due(messenger, last_morning_flow)
+
+            # 9:05–9:11 — July training month brief (kickoff day 1 + daily)
+            try:
+                from src.training_calendar import send_training_messages_if_due
+                last_training_kick, last_training_daily = send_training_messages_if_due(
+                    messenger, last_training_kick, last_training_daily, now)
+            except Exception:
+                pass
 
             # 9:16 AM — opening range + session context (yfinance, no Groww)
             if hour == 9 and 16 <= minute <= 20 and last_observer != now.day:
@@ -454,6 +464,16 @@ def main():
                 f"Type /readiness for checklist."
             )
     print("\n🔍 Startup checks...")
+    try:
+        from src.training_calendar import bootstrap_training_month, verify_training_stack
+        boot = bootstrap_training_month()
+        if boot.get('all_ok'):
+            print("  ✅ July training stack: all features OK")
+        else:
+            failed = [f['name'] for f in boot.get('failed', [])]
+            print(f"  ⚠️ Training stack issues: {', '.join(failed)}")
+    except Exception as e:
+        print(f"  ⚠️ Training bootstrap: {e}")
     reconcile_on_startup(msg)
     load_zone_on_startup(msg)
     try:
@@ -509,9 +529,9 @@ def main():
             from src.market_rag import init_knowledge_base
             from src.shadow_learning import init_shadow_tables
             from src.virtual_broker import init_virtual_broker_tables
+            from src.training_calendar import init_all_training_tables
+            init_all_training_tables()
             init_knowledge_base()
-            init_shadow_tables()
-            init_virtual_broker_tables()
             try:
                 from src.sim_scan_journal import init_sim_scan_table
                 init_sim_scan_table()
