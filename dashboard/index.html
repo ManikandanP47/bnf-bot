@@ -22,8 +22,16 @@
     </div>
   </header>
 
-  <main class="grid">
-    <!-- Market -->
+  <nav class="main-tabs" id="main-tabs">
+    <button type="button" class="main-tab active" data-panel="overview">Overview</button>
+    <button type="button" class="main-tab" data-panel="sim">Sim &amp; Learning</button>
+    <button type="button" class="main-tab" data-panel="brain">Brain &amp; Greeks</button>
+    <button type="button" class="main-tab" data-panel="system">System</button>
+    <button type="button" class="main-tab" data-panel="playbook">Playbook</button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <main class="grid tab-panel active" id="panel-overview" data-panel="overview">
     <section class="card span-2" id="market-card">
       <h2>Live Market</h2>
       <div class="market-hero">
@@ -38,7 +46,6 @@
       <div class="zone-box" id="m-zone"></div>
     </section>
 
-    <!-- Training -->
     <section class="card" id="training-card">
       <h2>Training Phase</h2>
       <div id="phase-badge" class="phase-badge">—</div>
@@ -59,7 +66,6 @@
       <ul class="kv-list" id="training-kv"></ul>
     </section>
 
-    <!-- Readiness -->
     <section class="card" id="readiness-card">
       <h2>Live Readiness</h2>
       <div id="readiness-status" class="readiness-pill">—</div>
@@ -68,36 +74,29 @@
         <tbody></tbody>
       </table>
     </section>
+  </main>
 
-    <!-- Sim vs Execute gap -->
+  <!-- SIM & LEARNING -->
+  <main class="grid tab-panel" id="panel-sim" data-panel="sim">
     <section class="card span-2" id="gap-card">
       <h2>Sim vs Execute — Honesty Check</h2>
       <p id="gap-verdict" class="gap-verdict">—</p>
       <div class="gap-grid" id="gap-grid"></div>
     </section>
 
-    <!-- Sim realism -->
     <section class="card span-2" id="realism-card">
       <h2>Sim Realism (Indian market rules)</h2>
       <div class="stat-row" id="realism-stats"></div>
       <ul class="kv-list" id="realism-kv"></ul>
     </section>
 
-    <section class="card span-2" id="greeks-card">
-      <h2>Option Greeks (BS + NSE IV)</h2>
-      <p class="playbook-intro" id="greeks-note">Delta, theta, vega from NSE chain IV — refreshed every 15 min. No extra Groww calls.</p>
-      <div class="stat-row" id="greeks-chain"></div>
-      <div class="stat-row" id="greeks-contract"></div>
-    </section>
-
     <section class="card span-2" id="learning-feed-card">
       <h2>Market Learning Feed</h2>
-      <p class="playbook-intro">What the bot observed each scan — learns even when it does not trade. No extra API calls.</p>
+      <p class="playbook-intro">What the bot observed each scan — learns even when it does not trade.</p>
       <div class="mini-stats" id="learning-stats"></div>
       <div class="scroll-list learning-feed" id="learning-feed"></div>
     </section>
 
-    <!-- Scans & Evidence -->
     <section class="card">
       <h2>Today's Scans</h2>
       <div class="mini-stats" id="scan-stats"></div>
@@ -111,8 +110,17 @@
       <div class="mini-stats" id="evidence-stats"></div>
       <div class="scroll-list" id="evidence-list"></div>
     </section>
+  </main>
 
-    <!-- ML & Intelligence -->
+  <!-- BRAIN & GREEKS -->
+  <main class="grid tab-panel" id="panel-brain" data-panel="brain">
+    <section class="card span-2" id="greeks-card">
+      <h2>Option Greeks (NSE IV)</h2>
+      <p class="playbook-intro" id="greeks-note">Delta, theta, vega from NSE chain — refreshed every 15 min.</p>
+      <div class="stat-row" id="greeks-chain"></div>
+      <div class="stat-row" id="greeks-contract"></div>
+    </section>
+
     <section class="card span-2">
       <h2>ML Brain</h2>
       <div class="stat-row" id="ml-stats"></div>
@@ -134,29 +142,33 @@
       <h3 class="subhead">Intelligence roadmap</h3>
       <div id="roadmap" class="roadmap"></div>
     </section>
+  </main>
 
-    <!-- Agents & System -->
+  <!-- SYSTEM -->
+  <main class="grid tab-panel" id="panel-system" data-panel="system">
     <section class="card">
       <h2>Agents</h2>
       <div id="agent-grid" class="agent-grid"></div>
     </section>
 
     <section class="card">
-      <h2>Groww & Persistence</h2>
+      <h2>Groww &amp; Persistence</h2>
       <ul class="kv-list" id="system-kv"></ul>
     </section>
+  </main>
 
-    <!-- Trader's Playbook -->
+  <!-- PLAYBOOK -->
+  <main class="grid tab-panel" id="panel-playbook" data-panel="playbook">
     <section class="card span-2" id="playbook-card">
       <h2>Trader's Playbook</h2>
       <p class="playbook-intro">Metrics, timing, and what to trust — your ₹5k survival guide.</p>
       <div id="phase-tips" class="phase-tips"></div>
       <div class="playbook-tabs">
-        <button type="button" class="tab active" data-tab="metrics">Metrics</button>
-        <button type="button" class="tab" data-tab="timing">Timing</button>
-        <button type="button" class="tab" data-tab="trust">What to trust</button>
-        <button type="button" class="tab" data-tab="stack">Entry / Exit</button>
-        <button type="button" class="tab" data-tab="india">India rules</button>
+        <button type="button" class="pb-tab active" data-tab="metrics">Metrics</button>
+        <button type="button" class="pb-tab" data-tab="timing">Timing</button>
+        <button type="button" class="pb-tab" data-tab="trust">What to trust</button>
+        <button type="button" class="pb-tab" data-tab="stack">Entry / Exit</button>
+        <button type="button" class="pb-tab" data-tab="india">India rules</button>
       </div>
       <div id="playbook-content" class="playbook-content"></div>
     </section>

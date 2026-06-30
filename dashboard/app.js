@@ -226,7 +226,26 @@
   }
 
   let playbookCache = null;
-  let activeTab = 'metrics';
+  let activePbTab = 'metrics';
+
+  function initMainTabs() {
+    const tabs = document.querySelectorAll('.main-tab');
+    const panels = document.querySelectorAll('.tab-panel');
+    const saved = sessionStorage.getItem('bnf_tab') || 'overview';
+
+    function show(panelId) {
+      tabs.forEach((t) => t.classList.toggle('active', t.dataset.panel === panelId));
+      panels.forEach((p) => p.classList.toggle('active', p.dataset.panel === panelId));
+      sessionStorage.setItem('bnf_tab', panelId);
+    }
+
+    tabs.forEach((btn) => {
+      btn.addEventListener('click', () => show(btn.dataset.panel));
+    });
+    if (document.querySelector(`.main-tab[data-panel="${saved}"]`)) {
+      show(saved);
+    }
+  }
 
   function renderPlaybookTab(pb, tab) {
     if (!pb) return '';
@@ -265,16 +284,16 @@
     playbookCache = pb;
     document.getElementById('phase-tips').innerHTML = (pb.phase_tips || [])
       .map((t) => `<span class="phase-tip">${t}</span>`).join('');
-    document.getElementById('playbook-content').innerHTML = renderPlaybookTab(pb, activeTab);
+    document.getElementById('playbook-content').innerHTML = renderPlaybookTab(pb, activePbTab);
   }
 
-  document.querySelectorAll('.playbook-tabs .tab').forEach((btn) => {
+  document.querySelectorAll('.playbook-tabs .pb-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.playbook-tabs .tab').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.playbook-tabs .pb-tab').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
-      activeTab = btn.dataset.tab;
+      activePbTab = btn.dataset.tab;
       if (playbookCache) {
-        document.getElementById('playbook-content').innerHTML = renderPlaybookTab(playbookCache, activeTab);
+        document.getElementById('playbook-content').innerHTML = renderPlaybookTab(playbookCache, activePbTab);
       }
     });
   });
@@ -372,6 +391,7 @@
   }
 
   document.getElementById('btn-refresh').addEventListener('click', refresh);
+  initMainTabs();
   refresh();
   setInterval(refresh, REFRESH_MS);
 })();
