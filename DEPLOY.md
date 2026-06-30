@@ -44,6 +44,22 @@ The installer will:
 - Register `bnf-bot.service`
 - Kill any old `nohup` / duplicate `main.py` processes
 - Start the bot
+- Blacklist `bnf-bot` from **needrestart** (apt won't auto-restart mid-market)
+
+### needrestart blacklist (already on server if you ran install)
+
+Ubuntu `unattended-upgrades` can restart services after library patches (e.g. `libsqlite3`).
+To keep the bot running through market hours:
+
+```bash
+sudo ./deploy/install-needrestart-blacklist.sh
+```
+
+After a security upgrade that would have restarted the bot, restart manually **after 3:30 PM**:
+
+```bash
+sudo systemctl restart bnf-bot
+```
 
 ### Daily commands
 

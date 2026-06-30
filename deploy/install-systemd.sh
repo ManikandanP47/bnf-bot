@@ -43,6 +43,11 @@ sleep 1
 
 systemctl restart "${SERVICE_NAME}"
 
+# Skip auto-restart during apt security updates (e.g. libsqlite3 at noon)
+if [[ -x "${SCRIPT_DIR}/install-needrestart-blacklist.sh" ]]; then
+  "${SCRIPT_DIR}/install-needrestart-blacklist.sh"
+fi
+
 echo ""
 systemctl status "${SERVICE_NAME}" --no-pager || true
 echo ""
