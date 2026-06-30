@@ -60,7 +60,9 @@ if [[ -f .env ]]; then
   ensure_var PRO_STRIKE_SCAN true
   ensure_var PRO_LADDER_DEPTH 12
   ensure_var PRO_CHAIN_SCAN true
-  ensure_var PRO_SPREAD_TRAINING true
+  ensure_var PRO_THETA_ADVISORY true
+  ensure_var PREMORTEM_MAX_DAILY_PCT 40
+  ensure_var PRO_COMPARE_CE_PE true
   ensure_var PRO_LOSS_PREVENTION true
   ensure_var MAX_DAILY_LOSS_TRADES 2
   ensure_var MAE_KILL_PCT 65
@@ -108,6 +110,40 @@ if [[ -f .env ]]; then
   ensure_var RECENT_TRADES_WINDOW 10
   ensure_var MIN_WIN_LOSS_RATIO 0.7
   ensure_var MIN_EXPECTANCY_RS 100
+
+  upsert_var() {
+    local key="$1" val="$2"
+    if grep -q "^${key}=" .env 2>/dev/null; then
+      sed -i.bak "s/^${key}=.*/${key}=${val}/" .env
+    else
+      echo "${key}=${val}" >> .env
+    fi
+  }
+  echo "==> Upserting pro training / loss-prevention env (July stack)..."
+  upsert_var PRO_TRAINING_MODE true
+  upsert_var PRO_STRIKE_SCAN true
+  upsert_var PRO_CHAIN_SCAN true
+  upsert_var PRO_SPREAD_TRAINING true
+  upsert_var PRO_THETA_ADVISORY true
+  upsert_var PRO_LOSS_PREVENTION true
+  upsert_var SIM_PRO_STRICT true
+  upsert_var SIM_ALIGN_EXECUTE true
+  upsert_var SIM_MAX_OPEN 3
+  upsert_var SIM_WALLET_MAX_OPEN 3
+  upsert_var SIM_WALLET_MAX_LOTS 3
+  upsert_var SIM_WALLET_WEEK1_RS 25000
+  upsert_var SIM_WALLET_WEEK2_RS 35000
+  upsert_var SIM_WALLET_WEEK3_RS 50000
+  upsert_var SIM_WALLET_WEEK4_RS 75000
+  upsert_var SIM_MIN_LOT_BUDGET_RS 3500
+  upsert_var MAX_DAILY_LOSS_TRADES 2
+  upsert_var MAE_KILL_PCT 65
+  upsert_var MAE_KILL_MINUTES 15
+  upsert_var TIME_STOP_MINUTES 105
+  upsert_var REVENGE_COOLDOWN_MIN 45
+  upsert_var PREMORTEM_MAX_DAILY_PCT 40
+  upsert_var TRAINING_START_DATE 2026-07-01
+  rm -f .env.bak
 fi
 
 echo "==> Restarting bnf-bot..."
