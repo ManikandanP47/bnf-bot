@@ -22,7 +22,11 @@ PAPER_PHASE_DAYS = int(os.getenv('PAPER_PHASE_DAYS', '14'))
 LEARNING_PHASE_DAYS = SIM_ONLY_DAYS  # backward compat alias
 TOTAL_TRAINING_DAYS = SIM_ONLY_DAYS + PAPER_PHASE_DAYS
 SHADOW_MAX_PER_DAY = int(os.getenv('SHADOW_MAX_PER_DAY', '5'))
-SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
+try:
+    from src.sim_wallet import SIM_WALLET_MAX_OPEN as _WALLET_OPEN
+except Exception:
+    _WALLET_OPEN = 3
+SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', os.getenv('SIM_WALLET_MAX_OPEN', str(_WALLET_OPEN))))
 SHADOW_ENABLED = os.getenv('SHADOW_LEARNING', 'true').lower() == 'true'
 VIRTUAL_TICK_SEC = int(os.getenv('VIRTUAL_TICK_SEC', '10'))
 USE_VALID_TRAINING_DAYS = os.getenv('USE_VALID_TRAINING_DAYS', 'true').lower() == 'true'
@@ -76,6 +80,10 @@ def _migrate_shadow_columns(conn):
         ('lots', 'INTEGER'),
         ('is_recovery', 'INTEGER'),
         ('lot_cost', 'REAL'),
+        ('leg1_done', 'INTEGER'),
+        ('leg1_profit', 'REAL'),
+        ('trail_sl', 'REAL'),
+        ('peak_prem', 'REAL'),
     ]:
         if name not in existing:
             conn.execute(f"ALTER TABLE shadow_trades ADD COLUMN {name} {typ}")
@@ -475,7 +483,9 @@ def tick_shadow_trades():
         SELECT id, bnf_entry, entry_prem, sl_prem, tgt_prem, strike, opt_type,
                expiry, bias, option_name, score, session, regime, prediction,
                sim_source, mae_prem, mfe_prem, peak_pnl_rs, entry_flow_score,
-               entry_time, COALESCE(lots, 1)
+               entry_time, COALESCE(lots, 1),
+               COALESCE(leg1_done, 0), COALESCE(leg1_profit, 0),
+               COALESCE(trail_sl, 0), COALESCE(peak_prem, 0)
         FROM shadow_trades WHERE date=? AND status='OPEN'
     """, (today,)).fetchall()
     if not rows:
@@ -494,8 +504,11 @@ def tick_shadow_trades():
     for row in rows:
         (sid, bnf_e, entry_p, sl_p, tgt_p, strike, otype, expiry,
          bias, name, score, session, regime, prediction,
-         sim_source, mae_p, mfe_p, peak_pnl, entry_flow, entry_time, lots) = row
+         sim_source, mae_p, mfe_p, peak_pnl, entry_flow, entry_time, lots,
+         leg1_done, leg1_profit, trail_sl_stored, peak_prem_stored) = row
         qty = int(lots or 1) * 15
+        leg1_units = qty // 2
+        leg2_units = qty - leg1_units
 
         pos = {
             'entry_price': entry_p, 'bnf_at_entry': bnf_e,
@@ -521,21 +534,87 @@ def tick_shadow_trades():
             continue
         new_mae = min(mae_p or entry_p, est)
         new_mfe = max(mfe_p or entry_p, est)
+        new_peak_prem = max(peak_prem_stored or entry_p, est)
         new_peak = max(peak_pnl or 0, pnl)
 
-        trail_sl = sl_p
-        if est >= entry_p * 1.35:
-            trail_sl = max(sl_p, round(entry_p * 1.05, 1))
-
         exit_now, reason, outcome = False, '', ''
-
         check_prem = sell_fill if SIM_LIVE_FILLS else est
-        if check_prem >= tgt_p:
+
+        max_loss_rs = round(max(0, (entry_p - sl_p) * qty), 0)
+        try:
+            from src.pro_loss_prevention import evaluate_in_trade_pro_exit
+            pro_x = evaluate_in_trade_pro_exit(
+                entry_p, est, entry_time or '', sl_p, max_loss_rs,
+                entry_flow or 0, cur_flow, bool(leg1_done), pnl,
+            )
+            if pro_x.get('exit'):
+                exit_now = True
+                reason = pro_x.get('reason', 'pro exit')
+                outcome = 'LOSS' if pnl < 0 else 'WIN'
+        except Exception:
+            pass
+
+        if not leg1_done and not exit_now and check_prem >= entry_p * 1.5 and leg1_units > 0:
+            leg1_profit = round((check_prem - entry_p) * leg1_units, 0)
+            leg1_done = 1
+            trail_sl_stored = max(sl_p, entry_p)
+            conn.execute("""
+                UPDATE shadow_trades SET leg1_done=1, leg1_profit=?, trail_sl=?, peak_prem=?
+                WHERE id=?
+            """, (leg1_profit, trail_sl_stored, new_peak_prem, sid))
+            try:
+                from src.sim_notify import notify_sim_telegram
+                notify_sim_telegram(
+                    f"🎯 *Sim Leg 1 locked* #{sid}\n"
+                    f"{name} @ ₹{check_prem:.0f} — ₹{leg1_profit:,} on {leg1_units} units\n"
+                    f"_Leg 2 trails with breakeven+ — same as paper/live_",
+                    kind='leg1',
+                )
+            except Exception:
+                pass
+            conn.commit()
+            continue
+
+        active_sl = sl_p
+        if leg1_done:
+            from src.trailing_sl import update_trailing_sl
+            trail = update_trailing_sl({
+                'entry_premium': entry_p,
+                'leg1_done': True,
+                'tgt_prem': tgt_p,
+                'trail_sl': trail_sl_stored or entry_p,
+                'peak_premium': new_peak_prem,
+            }, est)
+            if trail.get('action') == 'UPDATE_SL':
+                trail_sl_stored = trail.get('new_trail_sl', trail_sl_stored)
+                active_sl = trail_sl_stored
+            elif trail.get('action') in ('EXIT_TARGET', 'EXIT_TRAIL_SL'):
+                exit_now = True
+                outcome = 'WIN'
+                reason = trail.get('reason', 'Trail exit')
+                leg2_pnl = round(trail.get('locked_profit', (check_prem - entry_p) * leg2_units), 0)
+                pnl = apply_sim_txn_costs(leg1_profit + leg2_pnl)
+            else:
+                active_sl = max(trail_sl_stored or entry_p, sl_p)
+        else:
+            if est >= entry_p * 1.35:
+                active_sl = max(sl_p, round(entry_p * 1.05, 1))
+
+        if not exit_now and check_prem >= tgt_p:
             exit_now, reason, outcome = True, f'🎯 Target ₹{tgt_p:.0f}', 'WIN'
-        elif check_prem <= trail_sl:
-            tag = 'trail' if trail_sl > sl_p else 'SL'
-            exit_now, reason, outcome = True, f'🛑 {tag} @ ₹{sell_fill:.0f}', 'LOSS'
-        elif (entry_flow or 0) >= 3 and cur_flow <= (entry_flow - 2) and pnl < 0:
+            if leg1_done:
+                leg2_pnl = round((check_prem - entry_p) * leg2_units, 0)
+                pnl = apply_sim_txn_costs((leg1_profit or 0) + leg2_pnl)
+        elif not exit_now and check_prem <= active_sl:
+            tag = 'trail' if leg1_done or active_sl > sl_p else 'SL'
+            exit_now, reason, outcome = True, f'🛑 {tag} @ ₹{sell_fill:.0f}', (
+                'WIN' if (leg1_done and pnl + (leg1_profit or 0) >= 0) else
+                ('WIN' if pnl >= 0 else 'LOSS')
+            )
+            if leg1_done:
+                leg2_pnl = round((check_prem - entry_p) * leg2_units, 0)
+                pnl = apply_sim_txn_costs((leg1_profit or 0) + leg2_pnl)
+        elif not exit_now and (entry_flow or 0) >= 3 and cur_flow <= (entry_flow - 2) and pnl < 0:
             exit_now, reason, outcome = True, f'📉 Flow faded ({entry_flow}→{cur_flow})', 'LOSS'
         elif now.time() >= dtime(15, 10):
             exit_now = True
@@ -550,9 +629,10 @@ def tick_shadow_trades():
             except Exception:
                 pass
             conn.execute("""
-                UPDATE shadow_trades SET mae_prem=?, mfe_prem=?, peak_pnl_rs=?
+                UPDATE shadow_trades SET mae_prem=?, mfe_prem=?, peak_pnl_rs=?,
+                    trail_sl=?, peak_prem=?
                 WHERE id=?
-            """, (new_mae, new_mfe, new_peak, sid))
+            """, (new_mae, new_mfe, new_peak, trail_sl_stored or sl_p, new_peak_prem, sid))
             continue
 
         lesson = _build_shadow_lesson(

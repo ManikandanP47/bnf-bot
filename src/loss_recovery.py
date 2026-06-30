@@ -181,16 +181,32 @@ def activate_recovery_window(loss_data: dict, source: str = 'REAL') -> dict:
 
 def on_real_loss_closed(loss_data: dict) -> dict:
     """Hook from MonitorAgent after paper/live loss."""
+    try:
+        from src.pro_loss_prevention import on_loss_rectification, PRO_LOSS_PREVENTION
+        if PRO_LOSS_PREVENTION:
+            payload = on_loss_rectification(loss_data, source='REAL')
+            if payload.get('recovery', {}).get('active'):
+                from core.shared_state import STATE
+                STATE.set('recovery.sl_pct_override', RECOVERY_SL_PCT)
+            return payload
+    except Exception:
+        pass
     result = activate_recovery_window(loss_data, source='REAL')
     if result.get('active'):
         from core.shared_state import STATE
         STATE.set('recovery.sl_pct_override', RECOVERY_SL_PCT)
-    return result
+    return {'recovery': result}
 
 
 def on_sim_loss_closed(loss_data: dict) -> dict:
     """Hook from shadow/sim — trains recovery without risking capital."""
-    return activate_recovery_window(loss_data, source='SIM')
+    try:
+        from src.pro_loss_prevention import on_loss_rectification, PRO_LOSS_PREVENTION
+        if PRO_LOSS_PREVENTION:
+            return on_loss_rectification(loss_data, source='SIM')
+    except Exception:
+        pass
+    return {'recovery': activate_recovery_window(loss_data, source='SIM')}
 
 
 def mark_afternoon_setup_seen(score: int):
@@ -325,7 +341,17 @@ def check_recovery_trade_allowed(signal: dict, trades_today: int,
             }
 
     from src.capital_guard import check_daily_loss_cap
-    if check_daily_loss_cap().get('blocked'):
+    cap_blocked = False
+    try:
+        from src.shadow_learning import training_phase
+        if training_phase() == 'SIM':
+            from src.sim_wallet import is_account_dead_today
+            cap_blocked = is_account_dead_today().get('dead', False)
+        else:
+            cap_blocked = check_daily_loss_cap().get('blocked', False)
+    except Exception:
+        cap_blocked = check_daily_loss_cap().get('blocked', False)
+    if cap_blocked:
         return {'allowed': False, 'reason': 'Daily loss cap — no recovery'}
 
     _set_recovery(pending_recovery_trade=True)

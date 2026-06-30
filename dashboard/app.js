@@ -391,11 +391,13 @@
 
     const kv = document.getElementById('wallet-kv');
     if (kv) {
-      const ladder = (w.weekly_capital_ladder || [10000, 12500, 15000, 20000])
+      const ladder = (w.weekly_capital_ladder || [25000, 35000, 50000, 75000])
         .map((v, i) => `W${i + 1} ₹${fmt(v, 0)}`).join(' → ');
+      const proTag = w.pro_training_mode ? ' · pro training' : '';
       kv.innerHTML = [
+        ['Mode', w.pro_training_mode ? 'Pro trader training' : 'Standard sim'],
         ['Training week', `Week ${tw.week || 1} (day ${tw.days_in_week || '—'})`],
-        ['Week base', '₹' + fmt(w.week_base_rs, 0)],
+        ['Week base', '₹' + fmt(w.week_base_rs, 0) + proTag],
         ['Next week base', '₹' + fmt(w.next_week_base_rs, 0)],
         ['Capital ladder', ladder],
         ['Multi-order', w.multi_order ? 'ON (week 1+)' : 'off'],
@@ -443,6 +445,139 @@
         <td>${st}${o.outcome ? ' ' + o.outcome : ''}</td>
       </tr>`;
     }).join('');
+  }
+
+  function renderStrikeLadder(ld) {
+    const head = document.getElementById('ladder-head');
+    const body = document.getElementById('ladder-body');
+    const cePe = document.getElementById('ladder-ce-pe');
+    if (!head || !body) return;
+    if (!ld || !ld.ok) {
+      head.innerHTML = '';
+      body.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">Ladder fills when market is open and BNF price is live.</td></tr>';
+      if (cePe) cePe.textContent = '';
+      return;
+    }
+    head.innerHTML = [
+      ['Bias', ld.bias || '—'],
+      ['ATM', ld.atm != null ? ld.atm.toLocaleString('en-IN') : '—'],
+      ['Scanned', ld.scanned ?? '—'],
+      ['Budget/lot', '₹' + fmt(ld.max_lot_cost, 0)],
+    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span>${v}</span></div>`).join('');
+    const rows = ld.candidates || [];
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="7" style="color:var(--muted)">No affordable strikes in ladder.</td></tr>';
+    } else {
+      body.innerHTML = rows.map((c, i) => {
+        const mark = i === 0 ? '👉 ' : '';
+        return `<tr class="${i === 0 ? 'win' : ''}">
+          <td>${mark}${i + 1}</td>
+          <td>${c.name || c.strike + ' ' + (c.opt_type || '')}</td>
+          <td>₹${fmt(c.premium, 0)}</td>
+          <td>${c.rr_label || (c.rr_ratio ? '1:' + c.rr_ratio : '—')}</td>
+          <td>${c.score ?? '—'}</td>
+          <td>${c.archetype || c.otm_steps || '—'}</td>
+          <td style="font-size:0.78rem;color:var(--muted)">${c.reason_txt || '—'}</td>
+        </tr>`;
+      }).join('');
+    }
+    const cmp = ld.ce_pe_compare || {};
+    if (cePe) cePe.textContent = cmp.note ? `CE/PE compare: ${cmp.note}` : '';
+  }
+
+  function renderLossPrevention(lp) {
+    const head = document.getElementById('loss-prev-head');
+    const pre = document.getElementById('loss-pre-kv');
+    const rect = document.getElementById('loss-rect-kv');
+    if (!head) return;
+    if (!lp || lp.enabled === false) {
+      head.innerHTML = '';
+      if (pre) pre.innerHTML = '<li><span class="k">Status</span><span>Loading…</span></li>';
+      return;
+    }
+    const lt = lp.losses_today || {};
+    head.innerHTML = [
+      ['Losses today', (lt.real || 0) + ' real · ' + (lt.sim || 0) + ' sim'],
+      ['Since last loss', (lp.minutes_since_loss ?? '—') + 'm'],
+      ['Paused', lp.paused ? 'YES' : 'No'],
+      ['Sim dead', lp.sim_account_dead ? 'YES' : 'No'],
+    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span>${v}</span></div>`).join('');
+    if (pre) {
+      const steps = lp.pre_trade_steps || [];
+      pre.innerHTML = steps.map((s) =>
+        `<li><span class="k">${s.name}</span><span style="font-size:0.78rem;color:var(--muted)">${s.hint}</span></li>`
+      ).join('');
+      const inT = (lp.in_trade_steps || []).map((s) =>
+        `<li><span class="k">↳ ${s.name}</span><span style="font-size:0.78rem;color:var(--muted)">${s.hint}</span></li>`
+      ).join('');
+      pre.innerHTML += inT;
+    }
+    if (rect) {
+      const lr = lp.last_rectification || {};
+      const plan = lr.rectification || {};
+      const steps = plan.steps || lp.post_loss_steps || [];
+      rect.innerHTML = steps.slice(0, 7).map((s) => {
+        const done = s.done === true || (s.done === undefined && !plan.steps);
+        const icon = done ? '✅' : '⏳';
+        const title = s.title || s.name || '';
+        const detail = s.detail || s.hint || '';
+        return `<li><span class="k">${icon} ${title}</span><span style="font-size:0.78rem">${detail}</span></li>`;
+      }).join('') || '<li><span class="k">Status</span><span>No loss today — gates active</span></li>';
+    }
+  }
+
+  function renderProDecision(pd) {
+    const head = document.getElementById('pro-decision-head');
+    const rangesKv = document.getElementById('pro-ranges-kv');
+    const checklistKv = document.getElementById('pro-checklist-kv');
+    const chainBody = document.getElementById('chain-rr-body');
+    const spreadNote = document.getElementById('pro-spread-note');
+    const thetaNote = document.getElementById('pro-theta-note');
+    if (!head) return;
+    if (!pd || !pd.ok) {
+      head.innerHTML = '';
+      if (rangesKv) rangesKv.innerHTML = '<li><span class="k">Status</span><span>Waiting for market…</span></li>';
+      if (checklistKv) checklistKv.innerHTML = '';
+      if (chainBody) chainBody.innerHTML = '<tr><td colspan="6">—</td></tr>';
+      return;
+    }
+    const cl = pd.checklist || {};
+    const cp = pd.ce_pe || {};
+    const pick = pd.pick || {};
+    head.innerHTML = [
+      ['Spot', '₹' + fmt(pd.price, 0)],
+      ['Structure', pd.bias || '—'],
+      ['Checklist', (cl.passed || 0) + '/' + (cl.total || 12)],
+      ['Trade side', cp.trade_side || '—'],
+    ].map(([k, v]) => `<div class="stat"><span class="k">${k}</span><span>${v}</span></div>`).join('');
+
+    const levels = (pd.ranges && pd.ranges.levels) || [];
+    if (rangesKv) {
+      rangesKv.innerHTML = levels.slice(0, 8).map((l) =>
+        `<li><span class="k">${l.name}</span><span>${fmt(l.value, 0)} · ${l.dist_pct}% ${l.near ? '⚡' : ''}</span></li>`
+      ).join('') || '<li><span class="k">Ranges</span><span>loading</span></li>';
+    }
+    if (checklistKv) {
+      const checks = cl.checks || [];
+      checklistKv.innerHTML = checks.map((c) =>
+        `<li><span class="k">${c.ok ? '✅' : '⛔'} ${c.name}</span><span style="font-size:0.78rem">${c.detail || ''}</span></li>`
+      ).join('');
+    }
+    const top = (pd.chain && pd.chain.chain_top5) || [];
+    if (chainBody) {
+      chainBody.innerHTML = top.length ? top.map((c) =>
+        `<tr><td>${c.opt_type}</td><td>${c.name}</td><td>₹${fmt(c.premium, 0)}</td>
+         <td>${c.rr_label || '—'}</td><td>${c.archetype || '—'}</td><td>${c.composite_score ?? c.score}</td></tr>`
+      ).join('') : '<tr><td colspan="6">No chain data</td></tr>';
+    }
+    const sp = pd.spread || {};
+    if (spreadNote) {
+      spreadNote.textContent = sp.available
+        ? `Spread: ${sp.spread_type} · debit ₹${fmt(sp.net_debit_rs, 0)} · ${sp.vs_naked || ''}`
+        : (cp.flip_note || cp.edge_note || '');
+    }
+    const th = pd.theta_advisory || {};
+    if (thetaNote) thetaNote.textContent = th.note || (pick.archetype_label ? `Pick: ${pick.archetype_label}` : '');
   }
 
   function renderLearningFeed(lf) {
@@ -520,6 +655,9 @@
       renderIntelligence(d.intelligence || {});
       renderExecuteGap(d.execute_gap);
       renderSimWallet(d.sim_wallet);
+      renderStrikeLadder(d.strike_ladder);
+      renderProDecision(d.pro_decision);
+      renderLossPrevention(d.loss_prevention);
       renderSimRealism(d.sim_realism);
       renderLearningFeed(d.learning_feed);
       renderGreeks(d.greeks);

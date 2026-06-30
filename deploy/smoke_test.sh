@@ -56,6 +56,10 @@ try:
     from src.dashboard_api import build_dashboard_payload
     p = build_dashboard_payload()
     assert 'sim_wallet' in p
+    assert 'strike_ladder' in p
+    from src.pro_trader_gates import pro_training_gates_active
+    if not pro_training_gates_active():
+        errors.append('pro_trader_gates inactive')
     assert 'training' in p
     from src.training_dashboard import format_training_dashboard
     format_training_dashboard()

@@ -50,6 +50,25 @@ class ExecutionAgent(threading.Thread):
             if live_prem > 0:
                 premium = round(live_prem, 0)
 
+        try:
+            from src.pro_strike_scan import PRO_STRIKE_SCAN, pick_pro_strike
+            if PRO_STRIKE_SCAN and price and expiry:
+                pro = pick_pro_strike(price, bias, expiry)
+                if pro and pro.get('premium'):
+                    zone_locked = zone.get('active') and zone.get('strike')
+                    if not zone_locked or pro.get('score', 0) >= 4:
+                        strike = pro['strike']
+                        opt = pro['opt_type']
+                        name = pro.get('name') or f'BANKNIFTY {strike} {opt}'
+                        premium = pro['premium']
+                        strike_note = (
+                            f"Pro ladder #{pro.get('ladder_rank', 1)}/"
+                            f"{pro.get('ladder_scanned', '?')} "
+                            f"score {pro.get('score', '?')}"
+                        )
+        except Exception:
+            pass
+
         old_snap = {'name': name or f'BANKNIFTY {strike} {opt}', 'premium': premium}
         lot_cost = premium * 15
         if check_trade_cost_vs_capital(lot_cost)['blocked']:

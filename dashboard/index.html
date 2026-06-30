@@ -80,7 +80,7 @@
   <main class="grid tab-panel" id="panel-sim" data-panel="sim">
     <section class="card span-2" id="wallet-card">
       <h2>Virtual Wallet Training</h2>
-      <p class="playbook-intro">Week 1 starts ₹10k — capital rises each week. Multi-order + recovery ON from day 1.</p>
+      <p class="playbook-intro">Week 1 starts ₹25k pro training — capital rises each week. Multi-order (3) + recovery ON from day 1.</p>
       <div id="wallet-dead-banner" class="wallet-dead-banner hidden" role="alert"></div>
       <div class="wallet-hero">
         <div class="wallet-balance">
@@ -105,6 +105,62 @@
         <ul class="kv-list" id="wallet-kv"></ul>
         <ul class="kv-list" id="recovery-pnl-kv"></ul>
       </div>
+    </section>
+
+    <section class="card span-2" id="loss-prevention-card">
+      <h2>Loss Prevention &amp; Rectification</h2>
+      <p class="playbook-intro">How pros prevent loss (pre-trade + in-trade) and fix mistakes after — not revenge.</p>
+      <div class="stat-row" id="loss-prev-head"></div>
+      <div class="two-col wallet-cols">
+        <div>
+          <h3 class="subhead">Before trade</h3>
+          <ul class="kv-list" id="loss-pre-kv"></ul>
+        </div>
+        <div>
+          <h3 class="subhead">After loss — rectification</h3>
+          <ul class="kv-list" id="loss-rect-kv"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card span-2" id="pro-decision-card">
+      <h2>Pro Trader Decision Map</h2>
+      <p class="playbook-intro">Index ranges, CE vs PE edge, chain R:R, spread/theta intel — adapts every scan.</p>
+      <div class="stat-row" id="pro-decision-head"></div>
+      <div class="two-col wallet-cols">
+        <ul class="kv-list" id="pro-ranges-kv"></ul>
+        <ul class="kv-list" id="pro-checklist-kv"></ul>
+      </div>
+      <h3 class="subhead">Chain top picks (CE + PE)</h3>
+      <div class="scroll-list">
+        <table class="orders-table" id="chain-rr-table">
+          <thead>
+            <tr>
+              <th>Side</th><th>Strike</th><th>Prem</th><th>R:R</th><th>Type</th><th>Score</th>
+            </tr>
+          </thead>
+          <tbody id="chain-rr-body"></tbody>
+        </table>
+      </div>
+      <p id="pro-spread-note" class="playbook-intro"></p>
+      <p id="pro-theta-note" class="playbook-intro"></p>
+    </section>
+
+    <section class="card span-2" id="strike-ladder-card">
+      <h2>Pro Strike Ladder</h2>
+      <p class="playbook-intro">Scans up to 12 OTM strikes on bias side — sweet premium, delta proxy, IV rank.</p>
+      <div class="stat-row" id="ladder-head"></div>
+      <div class="scroll-list">
+        <table class="orders-table" id="ladder-table">
+          <thead>
+            <tr>
+              <th>#</th><th>Strike</th><th>Premium</th><th>R:R</th><th>Score</th><th>Type</th><th>Why</th>
+            </tr>
+          </thead>
+          <tbody id="ladder-body"></tbody>
+        </table>
+      </div>
+      <p id="ladder-ce-pe" class="playbook-intro" style="margin-top:0.5rem"></p>
     </section>
 
     <section class="card span-2" id="sim-orders-card">

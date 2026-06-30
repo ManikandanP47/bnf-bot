@@ -74,6 +74,19 @@ class RiskAgent(threading.Thread):
             return {'approved': False, 'reason': guard['reason']}
         warnings.extend(guard.get('warnings', []))
 
+        try:
+            from src.pro_loss_prevention import run_pre_trade_loss_prevention
+            is_rec = bool((STATE.get('recovery') or {}).get('pending_recovery_trade'))
+            prev = run_pre_trade_loss_prevention(signal, est_params, is_recovery=is_rec)
+            if not prev.get('ok', True):
+                return {'approved': False, 'reason': prev.get('reason', 'loss prevention')}
+            if prev.get('steps_passed'):
+                warnings.append(
+                    f"🛡️ Loss prevention: {len(prev['steps_passed'])} pre-trade checks OK"
+                )
+        except Exception:
+            pass
+
         # ── IV rank gate (option buyers — cached NSE chain) ───────
         try:
             from src.greeks_gates import check_iv_rank_for_buyers
@@ -82,6 +95,20 @@ class RiskAgent(threading.Thread):
                 return {'approved': False, 'reason': iv_gate['reason']}
             if iv_gate.get('warning'):
                 warnings.append(iv_gate['warning'])
+        except Exception:
+            pass
+
+        try:
+            from src.greeks_gates import check_greeks_for_buyers
+            gk = check_greeks_for_buyers(
+                est_params.get('strike'), est_params.get('opt_type'),
+                est_params.get('expiry'), premium=est_params.get('premium', 0),
+                session=signal.get('session', ''),
+            )
+            if not gk.get('ok', True):
+                return {'approved': False, 'reason': gk['reason']}
+            if gk.get('reason'):
+                warnings.append(gk['reason'])
         except Exception:
             pass
 

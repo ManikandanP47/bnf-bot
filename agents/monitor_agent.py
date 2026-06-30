@@ -167,6 +167,26 @@ class MonitorAgent(threading.Thread):
             exit_reason = f"🛑 SL hit at ₹{sl_from_initial:.0f}"
             pnl_rs      = round((est_prem - entry) * qty, 0)
 
+        if not exit_now and entry > 0:
+            try:
+                from src.pro_loss_prevention import evaluate_in_trade_pro_exit
+                live_pnl = round((est_prem - entry) * (leg2_units if leg1_done else qty), 0)
+                if leg1_done:
+                    live_pnl += position.get('leg1_profit', 0)
+                flow = STATE.get('market.flow') or {}
+                pro_x = evaluate_in_trade_pro_exit(
+                    entry, est_prem, position.get('entry_time', ''),
+                    sl_from_initial, round((entry - sl_from_initial) * qty, 0),
+                    position.get('entry_flow', 0), flow.get('flow_score', 0),
+                    leg1_done, live_pnl,
+                )
+                if pro_x.get('exit'):
+                    exit_now = True
+                    exit_reason = pro_x.get('reason', 'Pro exit')
+                    pnl_rs = live_pnl
+            except Exception:
+                pass
+
         # ── Execute exit ──────────────────────────────────────────
         if exit_now:
             rem_qty = leg2_units if leg1_done else qty
@@ -265,9 +285,7 @@ class MonitorAgent(threading.Thread):
 
             if pnl_rs < 0:
                 try:
-                    from src.loss_recovery import (
-                        on_real_loss_closed, format_recovery_telegram_after_loss,
-                    )
+                    from src.loss_recovery import on_real_loss_closed
                     rec = on_real_loss_closed({
                         'pnl_rs': pnl_rs,
                         'reason': exit_reason,
@@ -281,7 +299,16 @@ class MonitorAgent(threading.Thread):
                         'mistake_type': brain_result.get('mistake', ''),
                         'lesson': lesson,
                     })
-                    self.messenger.send(format_recovery_telegram_after_loss(rec))
+                    msg = rec.get('telegram')
+                    if not msg:
+                        from src.loss_recovery import format_recovery_telegram_after_loss
+                        r = rec.get('recovery', rec)
+                        msg = format_recovery_telegram_after_loss({
+                            'recoverable': r.get('recoverable', r.get('active')),
+                            'loss_type': r.get('loss_type'),
+                            'loss_pnl': r.get('loss_pnl'),
+                        })
+                    self.messenger.send(msg)
                 except Exception as e:
                     STATE.add_error(f"Recovery: {str(e)[:40]}")
 

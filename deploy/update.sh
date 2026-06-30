@@ -27,7 +27,11 @@ if [[ -f .env ]]; then
   ensure_var MARKET_SIM true
   ensure_var SIM_MAX_PER_DAY 15
   ensure_var SIM_SCAN_MINUTES 4
-  ensure_var SIM_MAX_OPEN 2
+  ensure_var SIM_MAX_OPEN 3
+  ensure_var SIM_PRO_STRICT true
+  ensure_var GREEKS_MIN_DELTA 0.15
+  ensure_var GREEKS_MAX_THETA_LOT_DAY 130
+  ensure_var GREEKS_MAX_THETA_AFTERNOON 95
   ensure_var SIM_MIN_GAP_MIN 8
   ensure_var SIM_ONLY_DAYS 15
   ensure_var PAPER_PHASE_DAYS 15
@@ -52,12 +56,26 @@ if [[ -f .env ]]; then
   ensure_var RECOVERY_MAX_LOSS_RS 450
   ensure_var RECOVERY_MAX_PER_WEEK 2
   ensure_var RECOVERY_SL_PCT 0.22
-  ensure_var SIM_WALLET_WEEK1_RS 10000
-  ensure_var SIM_WALLET_WEEK2_RS 12500
-  ensure_var SIM_WALLET_WEEK3_RS 15000
-  ensure_var SIM_WALLET_WEEK4_RS 20000
-  ensure_var SIM_WALLET_MAX_LOTS 2
-  ensure_var SIM_WALLET_MAX_OPEN 2
+  ensure_var PRO_TRAINING_MODE true
+  ensure_var PRO_STRIKE_SCAN true
+  ensure_var PRO_LADDER_DEPTH 12
+  ensure_var PRO_CHAIN_SCAN true
+  ensure_var PRO_SPREAD_TRAINING true
+  ensure_var PRO_LOSS_PREVENTION true
+  ensure_var MAX_DAILY_LOSS_TRADES 2
+  ensure_var MAE_KILL_PCT 65
+  ensure_var MAE_KILL_MINUTES 15
+  ensure_var TIME_STOP_MINUTES 105
+  ensure_var REVENGE_COOLDOWN_MIN 45
+  ensure_var PRO_SWEET_PREMIUM_MAX 450
+  ensure_var SWEET_PREMIUM_MIN 120
+  ensure_var SIM_WALLET_WEEK1_RS 25000
+  ensure_var SIM_WALLET_WEEK2_RS 35000
+  ensure_var SIM_WALLET_WEEK3_RS 50000
+  ensure_var SIM_WALLET_WEEK4_RS 75000
+  ensure_var SIM_WALLET_MAX_LOTS 3
+  ensure_var SIM_WALLET_MAX_OPEN 3
+  ensure_var SIM_MIN_LOT_BUDGET_RS 3500
   ensure_var SIM_MULTI_FROM_WEEK1 true
   ensure_var SIM_WALLET_DAILY_LOSS_PCT 0.02
   ensure_var PAPER_MODE true

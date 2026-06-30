@@ -133,15 +133,45 @@ def verify_training_stack() -> dict:
     ok('TRAINING_START', training_day_number() >= 0,
        f"starts {TRAINING_START_DATE}")
 
+    ok('PRO_TRAINING_MODE', os.getenv('PRO_TRAINING_MODE', 'true').lower() == 'true')
+    ok('PRO_STRIKE_SCAN', os.getenv('PRO_STRIKE_SCAN', 'true').lower() == 'true')
+
     try:
-        from src.sim_wallet import wallet_core, build_sim_wallet_payload
+        from src.sim_wallet import wallet_core, build_sim_wallet_payload, PRO_TRAINING_MODE
         w = wallet_core()
-        ok('SIM_WALLET', w.get('week_base_rs', 0) >= 10000,
+        min_base = 25000 if PRO_TRAINING_MODE else 10000
+        ok('SIM_WALLET', w.get('week_base_rs', 0) >= min_base,
            f"W{w.get('week')} ₹{w.get('week_base_rs', 0):,.0f}")
         build_sim_wallet_payload()
         ok('SIM_WALLET_API', True)
     except Exception as e:
         ok('SIM_WALLET', False, str(e)[:50])
+
+    try:
+        from src.pro_strike_scan import scan_strike_ladder, PRO_STRIKE_SCAN
+        ok('PRO_STRIKE_LADDER', PRO_STRIKE_SCAN)
+    except Exception as e:
+        ok('PRO_STRIKE_LADDER', False, str(e)[:50])
+
+    try:
+        from src.pro_trader_gates import pro_training_gates_active
+        ok('PRO_TRADER_GATES', pro_training_gates_active())
+    except Exception as e:
+        ok('PRO_TRADER_GATES', False, str(e)[:50])
+
+    try:
+        from src.pro_trader_decision import build_pro_decision, PRO_CHAIN_SCAN
+        ok('PRO_TRADER_DECISION', PRO_CHAIN_SCAN)
+        build_pro_decision()
+    except Exception as e:
+        ok('PRO_TRADER_DECISION', False, str(e)[:50])
+
+    try:
+        from src.pro_loss_prevention import build_loss_prevention_dashboard, PRO_LOSS_PREVENTION
+        ok('PRO_LOSS_PREVENTION', PRO_LOSS_PREVENTION)
+        build_loss_prevention_dashboard()
+    except Exception as e:
+        ok('PRO_LOSS_PREVENTION', False, str(e)[:50])
 
     try:
         from src.loss_recovery import recovery_status
@@ -194,12 +224,28 @@ def format_july_kickoff_message() -> str:
     """Day 1 morning — everything that trains in July."""
     v = verify_training_stack()
     wk = training_week_number()
+    try:
+        from src.sim_wallet import wallet_core, PRO_TRAINING_MODE, WEEKLY_CAPITAL
+        w = wallet_core()
+        cap_line = f"₹{w.get('week_base_rs', WEEKLY_CAPITAL[0]):,.0f} virtual"
+        if PRO_TRAINING_MODE:
+            ladder = ' → '.join(f"W{i+1} ₹{v:,.0f}" for i, v in enumerate(WEEKLY_CAPITAL))
+            cap_detail = (
+                f"  • Pro capital ladder: {ladder}\n"
+                f"  • Pro strike scan (12 OTM) + CE/PE compare\n"
+                f"  • Multi-order (3 open) + recovery ON\n"
+            )
+        else:
+            cap_detail = "  • Multi-order (2 open) + recovery ON\n"
+    except Exception:
+        cap_line = "₹25,000 virtual"
+        cap_detail = "  • Multi-order + recovery ON\n"
     return (
         f"🎓 *July Training Month — DAY 1*\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"📅 *{TRAINING_START_DATE} → 30 days* before live ₹5k\n\n"
-        f"*Week {wk} sim wallet:* ₹10,000 virtual\n"
-        f"  • Multi-order (2 open) + recovery ON\n"
+        f"*Week {wk} sim wallet:* {cap_line}\n"
+        f"{cap_detail}"
         f"  • Live learning every 60s + market observer 9:16\n"
         f"  • IV-rank gates + Greeks on every scan\n"
         f"  • Daily loss cap 2% of week capital\n\n"

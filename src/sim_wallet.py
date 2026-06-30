@@ -1,10 +1,10 @@
 """
 Virtual sim wallet — weekly capital ladder + multi-order + recovery training.
 
-Week 1: ₹10k (multi-order + recovery ON from day 1)
-Week 2: ₹12.5k → Week 3: ₹15k → Week 4+: ₹20k
+Pro training (PRO_TRAINING_MODE=true, default July):
+  Week 1: ₹25k → W2 ₹35k → W3 ₹50k → W4+ ₹75k (3 lots, 3 open)
 
-Balance each week = week_base + P&L since that week started (Monday-style from first activity).
+Legacy ladder: ₹10k → ₹12.5k → ₹15k → ₹20k
 """
 
 import os
@@ -14,19 +14,34 @@ import pytz
 IST = pytz.timezone('Asia/Kolkata')
 
 SIM_WALLET_LOT_UNIT = int(os.getenv('SIM_WALLET_LOT_UNIT', '15'))
-SIM_WALLET_MAX_LOTS = int(os.getenv('SIM_WALLET_MAX_LOTS', '2'))
-SIM_WALLET_MAX_OPEN = int(os.getenv('SIM_WALLET_MAX_OPEN', '2'))
-SIM_WALLET_RESERVE_PCT = float(os.getenv('SIM_WALLET_RESERVE_PCT', '0.12'))
+PRO_TRAINING_MODE = os.getenv('PRO_TRAINING_MODE', 'true').lower() == 'true'
+
+# Pro training capital ladder (July sim — room for multi-strike habits)
+if PRO_TRAINING_MODE:
+    _W1 = os.getenv('SIM_WALLET_WEEK1_RS', '25000')
+    _W2 = os.getenv('SIM_WALLET_WEEK2_RS', '35000')
+    _W3 = os.getenv('SIM_WALLET_WEEK3_RS', '50000')
+    _W4 = os.getenv('SIM_WALLET_WEEK4_RS', '75000')
+else:
+    _W1 = os.getenv('SIM_WALLET_WEEK1_RS', '10000')
+    _W2 = os.getenv('SIM_WALLET_WEEK2_RS', '12500')
+    _W3 = os.getenv('SIM_WALLET_WEEK3_RS', '15000')
+    _W4 = os.getenv('SIM_WALLET_WEEK4_RS', '20000')
+
+WEEKLY_CAPITAL = [float(_W1), float(_W2), float(_W3), float(_W4)]
+
+if PRO_TRAINING_MODE:
+    SIM_WALLET_MAX_LOTS = int(os.getenv('SIM_WALLET_MAX_LOTS', '3'))
+    SIM_WALLET_MAX_OPEN = int(os.getenv('SIM_WALLET_MAX_OPEN', '3'))
+    SIM_MIN_LOT_BUDGET_RS = float(os.getenv('SIM_MIN_LOT_BUDGET_RS', '3500'))
+else:
+    SIM_WALLET_MAX_LOTS = int(os.getenv('SIM_WALLET_MAX_LOTS', '2'))
+    SIM_WALLET_MAX_OPEN = int(os.getenv('SIM_WALLET_MAX_OPEN', '2'))
+    SIM_MIN_LOT_BUDGET_RS = float(os.getenv('SIM_MIN_LOT_BUDGET_RS', '2500'))
+
+SIM_WALLET_RESERVE_PCT = float(os.getenv('SIM_WALLET_RESERVE_PCT', '0.10'))
 SIM_WALLET_DAILY_LOSS_PCT = float(os.getenv('SIM_WALLET_DAILY_LOSS_PCT', '0.02'))
 SIM_MULTI_FROM_WEEK1 = os.getenv('SIM_MULTI_FROM_WEEK1', 'true').lower() == 'true'
-SIM_MIN_LOT_BUDGET_RS = float(os.getenv('SIM_MIN_LOT_BUDGET_RS', '2500'))
-
-WEEKLY_CAPITAL = [
-    float(os.getenv('SIM_WALLET_WEEK1_RS', '10000')),
-    float(os.getenv('SIM_WALLET_WEEK2_RS', '12500')),
-    float(os.getenv('SIM_WALLET_WEEK3_RS', '15000')),
-    float(os.getenv('SIM_WALLET_WEEK4_RS', '20000')),
-]
 
 
 def _conn():
@@ -237,6 +252,7 @@ def wallet_core() -> dict:
         'week_base_rs': week_base,
         'next_week_base_rs': tw['next_week_base_rs'],
         'weekly_capital_ladder': WEEKLY_CAPITAL,
+        'pro_training_mode': PRO_TRAINING_MODE,
         'balance': balance,
         'available': available,
         'reserved': reserved,

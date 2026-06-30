@@ -188,6 +188,30 @@ def _sim_wallet_payload() -> dict:
         return {'error': str(e)[:80]}
 
 
+def _strike_ladder_payload() -> dict:
+    try:
+        from src.pro_strike_scan import build_ladder_dashboard_payload
+        return build_ladder_dashboard_payload()
+    except Exception as e:
+        return {'error': str(e)[:80], 'ok': False, 'candidates': []}
+
+
+def _pro_loss_prevention_payload() -> dict:
+    try:
+        from src.pro_loss_prevention import build_loss_prevention_dashboard
+        return build_loss_prevention_dashboard()
+    except Exception as e:
+        return {'error': str(e)[:80], 'enabled': False}
+
+
+def _pro_decision_payload() -> dict:
+    try:
+        from src.pro_trader_decision import build_pro_decision_dashboard
+        return build_pro_decision_dashboard()
+    except Exception as e:
+        return {'error': str(e)[:80], 'ok': False}
+
+
 def build_dashboard_payload() -> dict:
     from src.intelligence_brief import build_intelligence_brief
     from src.db_persistence import get_table_counts, format_persistence_line
@@ -215,6 +239,9 @@ def build_dashboard_payload() -> dict:
         'learning_feed': _learning_feed_payload(),
         'greeks': _greeks_payload(),
         'sim_wallet': _sim_wallet_payload(),
+        'strike_ladder': _strike_ladder_payload(),
+        'pro_decision': _pro_decision_payload(),
+        'loss_prevention': _pro_loss_prevention_payload(),
         'evidence_tail': _recent_evidence(20),
     }
     try:

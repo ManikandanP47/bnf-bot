@@ -167,6 +167,8 @@ def _build_sim_params(bias: str, price: float) -> dict:
     zone = STATE.get('zone', {}) or {}
     expiry = zone.get('expiry') or next_banknifty_expiry(min_days_ahead=SIM_MIN_DAYS_TO_EXPIRY)
     strike, opt = 0, 'CE' if bias == 'BULLISH' else 'PE'
+    name = ''
+    ladder_note = ''
 
     if zone.get('active') and zone.get('strike'):
         strike = zone['strike']
@@ -174,19 +176,38 @@ def _build_sim_params(bias: str, price: float) -> dict:
         name = zone.get('option_name') or f'BANKNIFTY {strike} {opt}'
     else:
         from src.strike_picker import find_affordable_strike
-        picked = find_affordable_strike(price, bias, expiry)
+        from src.pro_strike_scan import pick_pro_strike
+        picked = pick_pro_strike(price, bias, expiry) or find_affordable_strike(price, bias, expiry)
         if picked:
-            fill = virtual_buy_fill(picked['strike'], picked['opt_type'], picked['expiry'])
-            if fill.get('ok'):
-                picked['premium'] = fill['premium']
-                picked['prem_source'] = fill['prem_source']
-            elif VIRTUAL_REQUIRE_GROWW:
-                return {}
-            picked.setdefault('prem_source', 'GROWW_LTP')
-            return picked
-        atm = round(price / 100) * 100
-        strike = atm + (100 if bias == 'BULLISH' else -100)
-        name = f'BANKNIFTY {strike} {opt}'
+            strike = picked['strike']
+            opt = picked['opt_type']
+            name = picked.get('name') or f'BANKNIFTY {strike} {opt}'
+            if picked.get('prem_source') == 'PRO_LADDER':
+                ladder_note = (
+                    f"Pro ladder #{picked.get('ladder_rank', 1)}/"
+                    f"{picked.get('ladder_scanned', '?')} score {picked.get('score', '?')}"
+                )
+        else:
+            atm = round(price / 100) * 100
+            strike = atm + (100 if bias == 'BULLISH' else -100)
+            name = f'BANKNIFTY {strike} {opt}'
+
+    try:
+        from src.pro_strike_scan import PRO_STRIKE_SCAN, pick_pro_strike
+        if PRO_STRIKE_SCAN and price and expiry:
+            pro = pick_pro_strike(price, bias, expiry)
+            if pro and pro.get('strike'):
+                zone_locked = zone.get('active') and zone.get('strike')
+                if not zone_locked or pro.get('score', 0) >= 4:
+                    strike = pro['strike']
+                    opt = pro['opt_type']
+                    name = pro.get('name') or f'BANKNIFTY {strike} {opt}'
+                    ladder_note = (
+                        f"Pro ladder #{pro.get('ladder_rank', 1)}/"
+                        f"{pro.get('ladder_scanned', '?')} score {pro.get('score', '?')}"
+                    )
+    except Exception:
+        pass
 
     fill = virtual_buy_fill(strike, opt, expiry)
     if not fill.get('ok'):
@@ -200,6 +221,9 @@ def _build_sim_params(bias: str, price: float) -> dict:
         prem_source = fill['prem_source']
 
     dyn = get_dynamic_sl_target(prem)
+    range_note = f"Groww LTP virtual buy @ ₹{prem} | BNF {price:,.0f}"
+    if ladder_note:
+        range_note = f"{ladder_note} | {range_note}"
     return {
         'name': name,
         'premium': round(prem, 1),
@@ -209,7 +233,7 @@ def _build_sim_params(bias: str, price: float) -> dict:
         'strike': strike,
         'opt_type': opt,
         'expiry': expiry,
-        'range_note': f"Groww LTP virtual buy @ ₹{prem} | BNF {price:,.0f}",
+        'range_note': range_note,
     }
 
 
@@ -310,6 +334,36 @@ def evaluate_explore_setup() -> dict:
             'flow_score': flow.get('flow_score', 0),
         })
 
+    setup_stub = {
+        'bias': bias,
+        'sim_score': scored['sim_score'],
+        'session': session,
+        'price': price,
+    }
+    from src.pro_trader_gates import run_pro_training_gates, pro_training_gates_active
+    gate = run_pro_training_gates(setup_stub, params)
+    if not gate.get('ok'):
+        return _attach_snapshot({
+            'ok': False,
+            'reason': gate.get('reason', 'pro gate'),
+            'pro_gate': gate.get('gate'),
+            'bias': bias,
+            'sim_score': scored['sim_score'],
+            'reasons': scored['reasons'],
+            'session': session,
+            'price': price,
+            'flow_score': flow.get('flow_score', 0),
+        })
+
+    try:
+        from src.pro_trader_decision import build_pro_decision
+        pro = build_pro_decision(
+            bias=bias, price=price, expiry=params.get('expiry'),
+            params=params, setup_score=scored['sim_score'], session=session,
+        )
+    except Exception:
+        pro = {}
+
     return _attach_snapshot({
         'ok': True,
         'bias': bias,
@@ -320,6 +374,9 @@ def evaluate_explore_setup() -> dict:
         'reasons': scored['reasons'],
         'params': params,
         'flow_score': flow.get('flow_score', 0),
+        'pro_gates': gate.get('gates_passed', []),
+        'pro_strict': pro_training_gates_active(),
+        'pro_decision': pro,
     })
 
 
@@ -354,6 +411,29 @@ def open_explore_sim(setup: dict) -> dict:
     )
     if not plan.get('ok'):
         return {'opened': False, 'reason': plan.get('reason', 'wallet')}
+
+    try:
+        from src.pro_loss_prevention import run_pre_trade_loss_prevention
+        prev = run_pre_trade_loss_prevention(
+            {
+                'score': setup.get('sim_score', 0),
+                'session': setup.get('session', ''),
+                'trend': setup.get('bias', ''),
+                'bias': setup.get('bias', ''),
+            },
+            {
+                'premium': params.get('premium'),
+                'max_loss': plan.get('max_loss_rs'),
+                'strike': params.get('strike'),
+                'opt_type': params.get('opt_type'),
+                'expiry': params.get('expiry'),
+            },
+            is_recovery=is_rec,
+        )
+        if not prev.get('ok'):
+            return {'opened': False, 'reason': prev.get('reason', 'loss prevention')}
+    except Exception:
+        pass
 
     lots = plan['lots']
     lot_cost = plan['lot_cost']
@@ -391,6 +471,13 @@ def open_explore_sim(setup: dict) -> dict:
     sid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
 
+    if is_rec:
+        try:
+            from src.loss_recovery import mark_recovery_used
+            mark_recovery_used()
+        except Exception:
+            pass
+
     try:
         from src.virtual_broker import record_sim_entry
         record_sim_entry(sid, setup['bias'], params['premium'], params)
@@ -422,6 +509,19 @@ def scan_and_maybe_open() -> dict:
             return {'scanned': False, 'reason': 'cooldown'}
 
     _last_scan_at = now
+    try:
+        from src.pro_trader_decision import build_pro_decision
+        from core.shared_state import STATE
+        z = STATE.get('zone', {}) or {}
+        build_pro_decision(
+            bias=z.get('bias'),
+            price=STATE.get('market.price', 0),
+            setup_score=0,
+            session=STATE.get('market.session', ''),
+        )
+    except Exception:
+        pass
+
     setup = evaluate_explore_setup()
     if not setup.get('ok'):
         result = {
@@ -432,6 +532,7 @@ def scan_and_maybe_open() -> dict:
             'bias': setup.get('bias', ''),
             'reasons': setup.get('reasons', []),
             'snapshot': setup.get('snapshot'),
+            'pro_decision': setup.get('pro_decision'),
         }
         _log_scan(result)
         try:
@@ -454,6 +555,7 @@ def scan_and_maybe_open() -> dict:
     result['bias'] = setup.get('bias', '')
     result['reasons'] = setup.get('reasons', [])
     result['snapshot'] = setup.get('snapshot')
+    result['pro_decision'] = setup.get('pro_decision')
     _log_scan(result)
     try:
         from src.sim_market_learn import log_sim_learning

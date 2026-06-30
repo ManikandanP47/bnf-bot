@@ -67,11 +67,25 @@ PLAYBOOK_METRICS = [
         'trade': 'Buy when IV rank low; avoid buying when IV spike already happened.',
     },
     {
-        'id': 'gamma',
-        'name': 'Gamma (γ)',
-        'math': 'Rate delta changes — spikes on expiry day',
-        'use': 'Expiry day blocked for new longs on ₹5k account.',
-        'trade': 'Pros sell gamma; small buyers must avoid expiry afternoon.',
+        'id': 'rr',
+        'name': 'Chain R:R',
+        'math': 'max_gain ÷ max_loss per strike (full CE+PE chain)',
+        'use': 'Pro ranks every affordable strike — not just ATM.',
+        'trade': 'Prefer 1:2+ R:R with sweet OTM delta; skip lottery strikes.',
+    },
+    {
+        'id': 'ranges',
+        'name': 'Index range map',
+        'math': 'Distance % from PDH PDL VWAP CPR TC/BC OI walls max pain',
+        'use': 'Know if you are buying into a wall or from support.',
+        'trade': 'CE above VWAP + above CPR TC; PE opposite.',
+    },
+    {
+        'id': 'ce_pe',
+        'name': 'CE vs PE same day',
+        'math': 'Composite score both sides — structure + R:R + flow',
+        'use': 'Both exist every day; edge side may differ from 15m bias.',
+        'trade': 'Follow structure unless sim logs strong opposite edge.',
     },
 ]
 
@@ -110,14 +124,21 @@ PLAYBOOK_TRUST = [
 def build_playbook_payload(phase: str = 'SIM') -> dict:
     phase_tips = {
         'SIM': [
-            'Week 1–2: bot scans market every ~4 min — learning chart context.',
+            'Week 1–2: pro virtual wallet ₹25k→₹75k — same gates as /execute (SIM_PRO_STRICT).',
+            'Loss prevention ON: 2 losses/day stop, MAE kill, revenge cooldown 45m.',
+            'After loss: diagnose → pause → one afternoon recovery (never size up).',
+            'Strike ladder scans 12 OTM strikes; leg-1 @ 1.5× + trail on sim exits.',
             'Valid day = ≥3 scans OR ≥1 sim close. Empty days do not count.',
-            'Dashboard Learning Feed shows every observation — even skips.',
-            'Ignore sim win rate; watch scan count + execute gap on dashboard.',
-            '/execute is locked — no paper orders yet.',
+            'Dashboard Learning Feed + Pro Strike Ladder — every observation logged.',
+            'Ignore sim win rate; watch pro gate pass rate + execute gap on dashboard.',
+            '/execute is locked until paper phase (Jul 16).',
         ],
         'PAPER': [
             'Week 3–4: only /execute path counts for readiness.',
+            'Pro Decision Map shows full checklist every scan — same brain as sim.',
+            'Paper uses chain R:R pick + all 12 pro gates.',
+            'Spread/theta notes are training intel — live stays long-only on ₹5k.',
+            'Track execute gap: paper WR is the real exam.',
             'Max 1–2 trades/day. Every trade must pass full risk stack.',
             'Run /readiness weekly. Need 56% WR and ₹100+ expectancy.',
         ],
