@@ -73,6 +73,17 @@ def format_market_pulse() -> str:
             f"🎓 Learning: {info['days_left']}d left | "
             f"Shadow today: {len(closed)} done, {len(open_s)} open"
         )
+        try:
+            from src.sim_evidence import get_daily_counts
+            ec = get_daily_counts()
+            lines.append(
+                f"📊 Evidence: *{ec['scans_total']}* scans logged | "
+                f"*{ec['sim_ticks']}* ticks | JSONL *{ec['jsonl_lines_today']}*"
+            )
+            if ec['scans_total'] == 0 and info.get('phase') == 'SIM':
+                lines.append("⚠️ *0 scans logged* — training not recording yet")
+        except Exception:
+            pass
     except Exception:
         pass
 

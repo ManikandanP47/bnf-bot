@@ -134,7 +134,7 @@ try:
     cmds = [
         '/help', '/status', '/pnl', '/zone', '/pause', '/resume',
         '/journal', '/readiness', '/funnel', '/context', '/cpr',
-        '/flow', '/backtest', '/learn', '/shadow', '/simday', '/simreport', '/ml', '/groww', '/why',
+        '/flow', '/backtest', '/learn', '/shadow', '/simday', '/evidence', '/simreport', '/ml', '/groww', '/why',
         '/resetlearning',
     ]
     for c in cmds:

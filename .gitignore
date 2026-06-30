@@ -9,6 +9,7 @@
 !heartbeat.json
 *.log
 telegram_mirror.jsonl
+sim_evidence.jsonl
 logs/
 backups/
 models/

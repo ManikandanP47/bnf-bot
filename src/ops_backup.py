@@ -41,6 +41,11 @@ def run_daily_backup() -> dict:
         shutil.copy2('.groww_rate_limit.json', os.path.join(dest, '.groww_rate_limit.json'))
         copied.append('.groww_rate_limit.json')
 
+    evidence = os.getenv('SIM_EVIDENCE_FILE', 'sim_evidence.jsonl')
+    if os.path.exists(evidence):
+        shutil.copy2(evidence, os.path.join(dest, os.path.basename(evidence)))
+        copied.append(evidence)
+
     model_dir = os.getenv('ML_MODEL_DIR', 'models')
     if os.path.isdir(model_dir):
         model_dest = os.path.join(dest, 'models')

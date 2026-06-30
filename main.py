@@ -175,6 +175,7 @@ def scheduler(messenger: Messenger):
     last_backup     = -1
     last_uptime_day = -1
     last_groww_alert = -1
+    last_evidence_alert = -1
 
     while STATE.get('system.running'):
         try:
@@ -296,6 +297,12 @@ def scheduler(messenger: Messenger):
                 try:
                     from src.groww_health import maybe_alert_auth_degraded
                     last_groww_alert = maybe_alert_auth_degraded(messenger, last_groww_alert)
+                except Exception:
+                    pass
+                try:
+                    from src.sim_evidence import check_evidence_gap_and_alert
+                    last_evidence_alert = check_evidence_gap_and_alert(
+                        messenger, last_evidence_alert)
                 except Exception:
                     pass
 
@@ -437,6 +444,11 @@ def main():
         time.sleep(0.5)
     from src.telegram_help import format_startup_message
     msg.send(format_startup_message(paper))
+    try:
+        from src.sim_evidence import record_evidence
+        record_evidence('BOT_START', {'paper': paper})
+    except Exception:
+        pass
     print("\n✅ All agents running")
 
     def _warm_readiness_cache():

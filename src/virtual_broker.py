@@ -244,9 +244,18 @@ def record_sim_entry(shadow_id: int, bias: str, entry_prem: float,
     """, (shadow_id, json.dumps(entry), json.dumps(patterns)))
     conn.commit()
     conn.close()
-
-
-def record_sim_tick(shadow_id: int, bnf: float, premium: float,
+    try:
+        from src.sim_evidence import record_evidence
+        record_evidence('TRADE_OPEN', {
+            'shadow_id': shadow_id,
+            'bias': bias,
+            'premium': entry_prem,
+            'strike': (params or {}).get('strike'),
+            'opt_type': (params or {}).get('opt_type'),
+            'prem_source': (params or {}).get('prem_source', ''),
+        })
+    except Exception:
+        pass
                     entry_prem: float, flow_score: int = 0,
                     prem_source: str = ''):
     """Log one monitoring tick — Groww LTP re-price."""
@@ -305,6 +314,17 @@ def record_sim_exit(shadow_id: int, bias: str, exit_prem: float,
     _update_chart_pattern_memory(shadow_id, treatment, outcome, pnl_rs)
     _ingest_trend_lesson(bias, outcome, treatment, trend_evo, pnl_rs)
     _last_mid_snap.pop(shadow_id, None)
+    try:
+        from src.sim_evidence import record_evidence
+        record_evidence('TRADE_CLOSE', {
+            'shadow_id': shadow_id,
+            'outcome': outcome,
+            'pnl_rs': pnl_rs,
+            'exit_prem': exit_prem,
+            'treatment': treatment[:120] if treatment else '',
+        })
+    except Exception:
+        pass
     try:
         from src.ml_brain import maybe_retrain
         maybe_retrain()

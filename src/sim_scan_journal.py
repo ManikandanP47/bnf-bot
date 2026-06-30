@@ -130,6 +130,31 @@ def log_sim_scan(result: dict):
         ))
         conn.commit()
         conn.close()
+        _record_scan_evidence(event, result, snap, reasons_txt, now)
+    except Exception as e:
+        print(f"⚠️ sim_scan_log DB failed: {e}")
+        _record_scan_evidence('SKIP', result, result.get('snapshot') or market_snapshot(),
+                              str(result.get('reason', '')), datetime.now(IST))
+
+
+def _record_scan_evidence(event, result, snap, reasons_txt, now):
+    try:
+        from src.sim_evidence import record_evidence
+        record_evidence('SIM_SCAN', {
+            'scan_event': event,
+            'reason': result.get('reason', ''),
+            'sim_score': result.get('sim_score', 0),
+            'bias': result.get('bias', ''),
+            'opened': bool(result.get('opened')),
+            'opened_id': result.get('id'),
+            'price': snap.get('price', 0),
+            'session': snap.get('session', ''),
+            'flow_score': snap.get('flow_score', 0),
+            'candles_5m': snap.get('candles_5m', 0),
+            'in_zone': snap.get('in_zone', 0),
+            'score_reasons': reasons_txt,
+            'time': now.strftime('%H:%M'),
+        })
     except Exception:
         pass
 

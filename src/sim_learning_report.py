@@ -138,7 +138,16 @@ def format_daily_sim_training_report() -> str:
         f"🎮 *Daily Market Training — {now.strftime('%d %b %Y')}*",
         "━━━━━━━━━━━━━━━━━━━",
         "_Bot trained on LIVE BNF + option premium — zero orders placed_",
-        "",
+    ]
+    try:
+        from src.sim_evidence import format_evidence_report
+        ev = format_evidence_report(today)
+        ev_body = '\n'.join(ev.split('\n')[2:])  # skip duplicate title lines
+        lines += ["", ev_body, ""]
+    except Exception:
+        pass
+
+    lines += [
         f"🎓 Phase: *{info['phase']}* — {info['days_left']}d left "
         f"(paper in {info['days_until_paper']}d | live window in {info['days_until_live']}d)",
     ]

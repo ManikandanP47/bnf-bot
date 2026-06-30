@@ -317,6 +317,10 @@ class CommandListener(threading.Thread):
             from src.sim_scan_journal import format_sim_day_visibility
             return format_sim_day_visibility(compact=False)
 
+        elif cmd == '/evidence':
+            from src.sim_evidence import format_evidence_report
+            return format_evidence_report()
+
         elif cmd == '/shadow':
             from src.shadow_learning import (
                 format_shadow_daily_section, learning_phase_info, format_auto_learning_status,

@@ -1400,8 +1400,17 @@ class SimLearningAgent(threading.Thread):
                     result = scan_and_maybe_open()
                     if result.get('opened'):
                         print(f"🎮 Sim opened #{result.get('id')}: {result.get('name')}")
+                    elif result.get('scanned'):
+                        reason = result.get('reason', '')[:40]
+                        if reason and 'cooldown' not in reason:
+                            pass  # logged to sim_scan_log + JSONL
             except Exception as e:
                 STATE.add_error(f"Sim: {str(e)[:50]}")
+                try:
+                    from src.sim_evidence import record_evidence
+                    record_evidence('SIM_AGENT_ERROR', {'error': str(e)[:120]})
+                except Exception:
+                    pass
             time.sleep(60)
 
         STATE.set_agent_status('sim', 'STOPPED')
