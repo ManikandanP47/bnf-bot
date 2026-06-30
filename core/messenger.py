@@ -1,6 +1,8 @@
 """Messenger — Reliable Telegram with retry"""
 import requests, time, os
 
+from src.telegram_format import sanitize_telegram_markdown
+
 
 def _mirror_out(text: str, kind: str = 'text'):
     try:
@@ -31,18 +33,19 @@ class Messenger:
 
     def send(self, text: str, retries: int = 3, parse_mode: str = 'Markdown') -> bool:
         body = text[:4096]
+        md_body = sanitize_telegram_markdown(body) if parse_mode == 'Markdown' else body
         modes = [parse_mode] if parse_mode else [None]
         if parse_mode:
             modes.append(None)  # fallback: plain text if Markdown breaks
 
         for attempt in range(retries):
             for mode in modes:
-                payload = {'chat_id': self.chat_id, 'text': body}
+                payload = {'chat_id': self.chat_id, 'text': md_body if mode else body}
                 if mode:
                     payload['parse_mode'] = mode
                 ok, err = self._post_message(payload)
                 if ok:
-                    _mirror_out(body, kind='buttons' if 'reply_markup' in payload else 'text')
+                    _mirror_out(payload['text'], kind='buttons' if 'reply_markup' in payload else 'text')
                     return True
                 if mode and 'parse' in err.lower():
                     print(f"⚠️  Telegram Markdown failed, retrying plain text: {err}")
@@ -58,12 +61,13 @@ class Messenger:
         buttons: list of rows, each row is list of {"text": ..., "callback_data": ...}
         """
         body = text[:4096]
+        md_body = sanitize_telegram_markdown(body)
         attempts = [
-            {'parse_mode': 'Markdown', 'reply_markup': {'inline_keyboard': buttons}},
-            {'reply_markup': {'inline_keyboard': buttons}},
+            {'parse_mode': 'Markdown', 'text': md_body, 'reply_markup': {'inline_keyboard': buttons}},
+            {'text': body, 'reply_markup': {'inline_keyboard': buttons}},
         ]
         for i, extra in enumerate(attempts):
-            payload = {'chat_id': self.chat_id, 'text': body, **extra}
+            payload = {'chat_id': self.chat_id, **extra}
             ok, err = self._post_message(payload)
             if ok:
                 _mirror_out(body, kind='buttons')

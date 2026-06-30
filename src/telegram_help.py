@@ -27,7 +27,7 @@ def format_startup_message(paper: bool) -> str:
         f"Pre-market: 9:00 | Observer: 9:16 | Flow: 9:25 | Evening: 8:15 PM IST\n\n"
         f"*July plan*\n"
         f"  Jul 1–15: SIM — ₹10k wallet, multi-order, recovery, Greeks\n"
-        f"  Jul 16–31: PAPER `/execute` (PAPER_MODE stays true)\n"
+        f"  Jul 16–31: PAPER `/execute` (paper mode stays true)\n"
         f"  Aug 1+: Live only if `/readiness` ✅\n\n"
         f"📊 Dashboard: Sim & Learning tab\n"
         f"🎓 /training /recovery /shadow /simday\n\n"
