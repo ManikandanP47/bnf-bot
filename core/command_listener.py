@@ -102,6 +102,11 @@ class CommandListener(threading.Thread):
             'risk':                  None,
             'pending_params':        None,
         })
+        try:
+            from src.loss_recovery import cancel_pending_recovery
+            cancel_pending_recovery()
+        except Exception:
+            pass
         return (
             "⏭ *Trade skipped*\n"
             "Logged for skip-learning — bot checks at EOD if skip was right.\n"
@@ -362,6 +367,27 @@ class CommandListener(threading.Thread):
             zone = STATE.get('zone') or {}
             refresh_market_flow(zone.get('bias', 'BULLISH'))
             return format_flow_report()
+
+        elif cmd == '/recovery':
+            from src.loss_recovery import recovery_status
+            r = recovery_status()
+            ds = r.get('drill_stats') or {}
+            lines = [
+                "🔄 *Loss Recovery Protocol*",
+                "━━━━━━━━━━━━━━━━━━━",
+                f"Window: {'OPEN' if r.get('active') else 'closed'}",
+                f"Used today: {'yes' if r.get('used_today') else 'no'}",
+            ]
+            if r.get('loss_pnl'):
+                lines.append(f"Today's loss: ₹{r['loss_pnl']:,.0f} ({r.get('loss_type', '')})")
+            lines += [
+                f"Recovery needs: score ≥{r.get('min_score', 9)}, afternoon only",
+                f"Virtual drills: {ds.get('samples', 0)} · WR {ds.get('wr', '—')}%",
+                f"Weekly recovery used: {r.get('weekly_used', 0)}/{r.get('weekly_cap', 1)}",
+                "",
+                "_Not revenge trading — one disciplined second chance max._",
+            ]
+            return '\n'.join(lines)
 
         elif cmd == '/help':
             from src.telegram_help import format_full_help

@@ -164,6 +164,7 @@ def _learning_feed_payload() -> dict:
             'feed': get_today_learning_feed(20),
             'live_insights': STATE.get('brain.live_insights') or {},
             'market_observer': STATE.get('market.observer') or {},
+            'recovery': STATE.get('brain.recovery') or {},
             'note': 'Uses cached market data — no extra Groww API calls per scan',
         }
         return payload

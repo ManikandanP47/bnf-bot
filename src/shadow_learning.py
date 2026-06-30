@@ -583,6 +583,26 @@ def tick_shadow_trades():
         except Exception:
             pass
 
+        if outcome == 'LOSS':
+            try:
+                from src.loss_recovery import on_sim_loss_closed
+                on_sim_loss_closed({
+                    'pnl_rs': pnl,
+                    'reason': reason,
+                    'session': session or '',
+                    'score': score or 0,
+                    'regime': regime or '',
+                    'rsi': STATE.get('market.rsi_5m', 50),
+                    'lesson': lesson,
+                })
+            except Exception:
+                pass
+        try:
+            from src.loss_recovery import resolve_drill_on_sim_close
+            resolve_drill_on_sim_close(outcome, pnl, session or '', score or 0)
+        except Exception:
+            pass
+
     conn.commit()
     conn.close()
 

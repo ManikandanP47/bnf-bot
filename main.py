@@ -214,6 +214,11 @@ def scheduler(messenger: Messenger):
                 last_day_reset = now.day
                 STATE.set('brain.trades_today', 0)
                 STATE.set('brain.today_pnl',    0.0)
+                try:
+                    from src.loss_recovery import clear_recovery_eod
+                    clear_recovery_eod()
+                except Exception:
+                    pass
                 if weekday == 0:
                     STATE.set('system.weekly_losses', 0)
                     STATE.set('system.week_pnl',      0.0)
@@ -266,6 +271,11 @@ def scheduler(messenger: Messenger):
             # 3:36 PM — daily market training digest (virtual sims on live data)
             if hour == 15 and 35 <= minute <= 39 and last_sim_daily != now.day:
                 last_sim_daily = now.day
+                try:
+                    from src.loss_recovery import clear_recovery_eod
+                    clear_recovery_eod()
+                except Exception:
+                    pass
                 try:
                     from src.sim_learning_report import (
                         format_daily_sim_training_report, maybe_send_graduation,

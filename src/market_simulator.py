@@ -421,6 +421,13 @@ def scan_and_maybe_open() -> dict:
             log_sim_learning(result)
         except Exception:
             pass
+        try:
+            sc = int(result.get('sim_score', 0) or 0)
+            if sc:
+                from src.loss_recovery import mark_afternoon_setup_seen
+                mark_afternoon_setup_seen(sc)
+        except Exception:
+            pass
         return result
 
     result = open_explore_sim(setup)
@@ -433,6 +440,13 @@ def scan_and_maybe_open() -> dict:
     try:
         from src.sim_market_learn import log_sim_learning
         log_sim_learning(result)
+    except Exception:
+        pass
+    try:
+        sc = result.get('sim_score', 0) or setup.get('sim_score', 0)
+        if sc:
+            from src.loss_recovery import mark_afternoon_setup_seen
+            mark_afternoon_setup_seen(int(sc))
     except Exception:
         pass
     return result

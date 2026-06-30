@@ -229,8 +229,17 @@ class RiskAgent(threading.Thread):
                     'reason': f"Score {score} < brain min {min_score}"}
 
         if trades_today >= max_trades:
-            return {'approved': False,
-                    'reason': f"Max trades/day reached ({trades_today}/{max_trades})"}
+            try:
+                from src.loss_recovery import check_recovery_trade_allowed
+                rec = check_recovery_trade_allowed(signal, trades_today, max_trades)
+                if rec.get('allowed'):
+                    warnings.append(rec.get('note', 'Recovery trade slot'))
+                else:
+                    return {'approved': False,
+                            'reason': rec.get('reason', f"Max trades/day ({max_trades})")}
+            except Exception:
+                return {'approved': False,
+                        'reason': f"Max trades/day reached ({trades_today}/{max_trades})"}
 
         if hour in avoid_hours:
             return {'approved': False,

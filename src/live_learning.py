@@ -152,6 +152,11 @@ def run_active_learning_cycle(brain) -> dict:
 
     from core.shared_state import STATE
     STATE.set('brain.live_insights', insights)
+    try:
+        from src.loss_recovery import recovery_status
+        STATE.set('brain.recovery', recovery_status())
+    except Exception:
+        pass
 
     return {'observer': bool(obs_result.get('session')), 'sim': sim_result, 'insights': insights}
 

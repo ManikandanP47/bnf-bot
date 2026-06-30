@@ -323,14 +323,25 @@
     if (!lf) return;
     const s = lf.summary || {};
     const li = lf.live_insights || {};
+    const rec = lf.recovery || {};
     document.getElementById('learning-stats').innerHTML = [
       stat('Observations', s.observations_today ?? li.scans_today ?? 0),
       stat('Virtual opens', s.virtual_opens ?? li.virtual_opens_today ?? 0),
       stat('Skips logged', s.skips_logged ?? 0),
       stat('IV rank', li.iv_rank != null ? li.iv_rank : '—'),
       stat('Regime', li.regime || '—'),
-      stat('OR signal', li.or_signal || '—'),
+      stat('Recovery', rec.active ? '🔄 open' : (rec.used_today ? '✓ used' : '—')),
     ].join('');
+    const recEl = document.getElementById('recovery-panel');
+    if (recEl && rec.enabled !== false) {
+      const ds = rec.drill_stats || {};
+      recEl.innerHTML = [
+        `<li><span class="k">Protocol</span><span>${rec.active ? 'Window open' : 'Idle'} · min score ${rec.min_score || 9}</span></li>`,
+        `<li><span class="k">Today loss</span><span>${rec.loss_pnl ? '₹' + rec.loss_pnl : '—'} ${rec.loss_type || ''}</span></li>`,
+        `<li><span class="k">Virtual drills</span><span>${ds.samples || 0} resolved · WR ${ds.wr != null ? ds.wr + '%' : '—'}</span></li>`,
+        `<li><span class="k">Weekly recovery</span><span>${rec.weekly_used || 0}/${rec.weekly_cap || 1}</span></li>`,
+      ].join('');
+    }
     const feed = lf.feed || [];
     document.getElementById('learning-feed').innerHTML = feed.length
       ? feed.map((r) =>

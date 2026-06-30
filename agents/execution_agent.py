@@ -77,7 +77,11 @@ class ExecutionAgent(threading.Thread):
 
         brain = STATE.get('brain', {})
         widen = brain.get('sl_widen_pct', 0)
-        if widen and not dyn:
+        rec_sl = STATE.get('recovery.sl_pct_override')
+        if rec_sl and STATE.get('recovery', {}).get('pending_recovery_trade'):
+            sl_pct = min(sl_pct, float(rec_sl))
+            sl_prem = round(premium * (1 - sl_pct), 0)
+        elif widen and not dyn:
             sl_prem = round(premium * (1 - sl_pct * (1 + widen)), 0)
 
         lots  = compute_lots(brain.get('kelly', 0.25), brain.get('total_trades', 0))
@@ -510,6 +514,13 @@ class ExecutionAgent(threading.Thread):
                         # Update brain trades today
                         trades_today = STATE.get('brain.trades_today', 0)
                         STATE.set('brain.trades_today', trades_today + 1)
+
+                        if STATE.get('recovery', {}).get('pending_recovery_trade'):
+                            try:
+                                from src.loss_recovery import mark_recovery_used
+                                mark_recovery_used()
+                            except Exception:
+                                pass
 
                         # Mark zone used
                         STATE.set('zone.used', True)

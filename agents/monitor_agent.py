@@ -263,6 +263,28 @@ class MonitorAgent(threading.Thread):
 
             lesson = BRAIN._get_field(learning_id, 'lesson') or brain_result.get('lesson', '')
 
+            if pnl_rs < 0:
+                try:
+                    from src.loss_recovery import (
+                        on_real_loss_closed, format_recovery_telegram_after_loss,
+                    )
+                    rec = on_real_loss_closed({
+                        'pnl_rs': pnl_rs,
+                        'reason': exit_reason,
+                        'session': session,
+                        'regime': STATE.get('market.regime', ''),
+                        'score': STATE.get('signals.analysis', {}).get('score', 5)
+                               if STATE.get('signals.analysis') else 5,
+                        'rsi': STATE.get('market.rsi_5m', 50),
+                        'mae_rs': mae_rs,
+                        'mfe_rs': mfe_rs,
+                        'mistake_type': brain_result.get('mistake', ''),
+                        'lesson': lesson,
+                    })
+                    self.messenger.send(format_recovery_telegram_after_loss(rec))
+                except Exception as e:
+                    STATE.add_error(f"Recovery: {str(e)[:40]}")
+
             # Update today P&L
             today_pnl = STATE.get('brain.today_pnl', 0) + pnl_rs
             STATE.set('brain.today_pnl', today_pnl)
