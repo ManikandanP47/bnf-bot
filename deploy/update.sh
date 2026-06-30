@@ -47,6 +47,12 @@ if [[ -f .env ]]; then
   ensure_var SIM_MIN_SCORE 5
   ensure_var SIM_SKIP_CHOP_SESSIONS true
   ensure_var SIM_ALIGN_EXECUTE true
+  ensure_var SIM_MIN_DAYS_TO_EXPIRY 5
+  ensure_var SIM_ROUND_TRIP_COST_RS 65
+  ensure_var SIM_DAILY_LOSS_LIMIT_RS 100
+  ensure_var SIM_BLOCK_EXPIRY_DAY true
+  ensure_var SIM_REQUIRE_SWEET_PREMIUM true
+  ensure_var SIM_SPREAD_PCT 1.5
   if ! grep -q "^DASHBOARD_TOKEN=" .env 2>/dev/null; then
     DASH_TOK="$(openssl rand -hex 24)"
     echo "DASHBOARD_TOKEN=${DASH_TOK}" >> .env

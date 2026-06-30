@@ -66,7 +66,7 @@ PLAYBOOK_TRUST = [
     {
         'metric': 'Sim P&L',
         'trust': 'low',
-        'why': 'Relaxed rules (score≥4, fewer filters). Scanner health only.',
+        'why': 'Relaxed rules (score≥5, fewer filters). Scanner health only.',
     },
     {
         'metric': 'Paper /execute WR',
@@ -126,5 +126,15 @@ def build_playbook_payload(phase: str = 'SIM') -> dict:
             'Trail SL after peak >1.2× entry',
             'Hard SL at planned stop premium',
             'Force close by 3:10 PM IST',
+        ],
+        'indian_wisdom': [
+            'Paper/sim fills at LTP — live crosses bid-ask spread (1–2% on thin strikes).',
+            'Break-even on sim ≈ loss live after brokerage + STT + GST (~₹65/round trip).',
+            'BNF is monthly expiry only (last Tuesday) — theta accelerates final week.',
+            'No new long options after 2 PM — especially on expiry day.',
+            'Daily loss cap 2% (₹100 on ₹5k) — stop terminal when hit.',
+            'Premium sweet spot ₹120–₹280 for ₹5k — below = spread kills edge.',
+            '70%+ retail option buyers lose — sim WR does not predict live edge.',
+            'Trust paper /execute stats + /readiness gates, not virtual gym P&L.',
         ],
     }

@@ -249,6 +249,11 @@
           <div><b>${t.metric}</b> — ${t.why}</div></div>`
       ).join('');
     }
+    if (tab === 'india') {
+      return (pb.indian_wisdom || []).map((w) =>
+        `<div class="metric-card">${w}</div>`
+      ).join('');
+    }
     const entries = (pb.entry_stack || []).map((s) => `<li>${s}</li>`).join('');
     const exits = (pb.exit_rules || []).map((s) => `<li>${s}</li>`).join('');
     return `<h3 class="subhead">Entry stack</h3><ol class="stack-list">${entries}</ol>
@@ -274,6 +279,24 @@
     });
   });
 
+  function renderSimRealism(r) {
+    if (!r || r.error) return;
+    document.getElementById('realism-stats').innerHTML = [
+      stat('Txn cost/rt', '₹' + (r.round_trip_cost_rs ?? 65)),
+      stat('Daily loss cap', '₹' + (r.daily_loss_limit_rs ?? 100)),
+      stat('Days to expiry', r.days_to_expiry ?? '—'),
+      stat('Today sim P&L', '₹' + fmt(r.today_shadow_pnl, 0)),
+    ].join('');
+    document.getElementById('realism-kv').innerHTML = [
+      ['Monthly expiry', r.monthly_expiry || '—'],
+      ['Expiry week', r.is_expiry_week ? '⚠️ YES' : 'No'],
+      ['Expiry day', r.is_expiry_day ? '⚠️ TODAY' : 'No'],
+      ['Min DTE (sim)', r.min_days_to_expiry ?? 5],
+      ['Sweet premium band', r.require_sweet_premium ? '₹120–₹280 enforced' : 'off'],
+      ['Block expiry day entries', r.block_expiry_day ? 'Yes' : 'No'],
+    ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
+  }
+
   function setConn(ok) {
     const dot = document.getElementById('conn-dot');
     const label = document.getElementById('conn-label');
@@ -296,6 +319,7 @@
       renderML(d.ml || {});
       renderIntelligence(d.intelligence || {});
       renderExecuteGap(d.execute_gap);
+      renderSimRealism(d.sim_realism);
       renderPlaybook(d.playbook);
       renderAgents(d.agents || {});
       renderSystem(d.groww, d.persistence || {}, d.persistence_line);

@@ -16,7 +16,7 @@ from core.shared_state import STATE
 IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 SIM_SCAN_LOG = os.getenv('SIM_SCAN_LOG', 'true').lower() == 'true'
-SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '4'))
+SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '5'))
 
 
 def _conn():

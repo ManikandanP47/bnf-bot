@@ -30,6 +30,8 @@ SIM_MIN_GAP_MIN = int(os.getenv('SIM_MIN_GAP_MIN', '8'))
 SIM_SKIP_CHOP_SESSIONS = os.getenv('SIM_SKIP_CHOP_SESSIONS', 'true').lower() == 'true'
 SIM_ALIGN_EXECUTE = os.getenv('SIM_ALIGN_EXECUTE', 'true').lower() == 'true'
 
+from src.sim_realism import SIM_MIN_DAYS_TO_EXPIRY, check_sim_entry_gates
+
 _CHOP_SESSIONS = frozenset({
     'LUNCH_CHOP', 'EOD_CHOP', 'OPEN_VOLATILE', 'OPENING_CHAOS',
     'PRE_MARKET', 'CLOSED',
@@ -163,7 +165,7 @@ def _build_sim_params(bias: str, price: float) -> dict:
     from src.trade_filters import get_dynamic_sl_target
 
     zone = STATE.get('zone', {}) or {}
-    expiry = zone.get('expiry') or next_banknifty_expiry(min_days_ahead=0)
+    expiry = zone.get('expiry') or next_banknifty_expiry(min_days_ahead=SIM_MIN_DAYS_TO_EXPIRY)
     strike, opt = 0, 'CE' if bias == 'BULLISH' else 'PE'
 
     if zone.get('active') and zone.get('strike'):
@@ -287,6 +289,19 @@ def evaluate_explore_setup() -> dict:
         return _attach_snapshot({
             'ok': False,
             'reason': 'no premium (Groww LTP required)',
+            'bias': bias,
+            'sim_score': scored['sim_score'],
+            'reasons': scored['reasons'],
+            'session': session,
+            'price': price,
+            'flow_score': flow.get('flow_score', 0),
+        })
+
+    realism = check_sim_entry_gates(params.get('premium', 0), scored['sim_score'])
+    if not realism.get('ok'):
+        return _attach_snapshot({
+            'ok': False,
+            'reason': realism.get('reason', 'realism gate'),
             'bias': bias,
             'sim_score': scored['sim_score'],
             'reasons': scored['reasons'],

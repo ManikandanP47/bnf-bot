@@ -480,6 +480,8 @@ def tick_shadow_trades():
         sell_fill = sell['fill']
         live = virtual_live_pnl(entry_p, est)
         pnl = live['pnl_rs'] if SIM_LIVE_FILLS else mtm['pnl_rs']
+        from src.sim_realism import apply_sim_txn_costs
+        pnl = apply_sim_txn_costs(pnl)
         prem_src = mtm.get('prem_source', '')
 
         if not mtm.get('is_real') and est <= 0:
