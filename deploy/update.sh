@@ -39,6 +39,10 @@ if [[ -f .env ]]; then
   ensure_var TELEGRAM_MIRROR_ENABLED true
   ensure_var MIN_PAPER_TRADES 20
   ensure_var MIN_WIN_RATE 56
+  ensure_var MIN_RECENT_WIN_RATE 50
+  ensure_var RECENT_TRADES_WINDOW 10
+  ensure_var MIN_WIN_LOSS_RATIO 0.7
+  ensure_var MIN_EXPECTANCY_RS 100
 fi
 
 echo "==> Restarting bnf-bot..."

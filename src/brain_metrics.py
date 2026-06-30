@@ -20,6 +20,10 @@ MIN_WIN_RATE     = float(os.getenv('MIN_WIN_RATE', '56'))
 MIN_PROFIT_FACTOR = float(os.getenv('MIN_PROFIT_FACTOR', '1.2'))
 MIN_CONFIDENCE   = int(os.getenv('MIN_PAPER_CONFIDENCE', '60'))
 MAX_CONSEC_LOSSES = int(os.getenv('MAX_CONSEC_LOSSES', '3'))
+RECENT_TRADES_WINDOW = int(os.getenv('RECENT_TRADES_WINDOW', '10'))
+MIN_RECENT_WIN_RATE = float(os.getenv('MIN_RECENT_WIN_RATE', '50'))
+MIN_WIN_LOSS_RATIO = float(os.getenv('MIN_WIN_LOSS_RATIO', '0.7'))
+MIN_EXPECTANCY_RS = float(os.getenv('MIN_EXPECTANCY_RS', '100'))
 
 
 def _conn():
@@ -71,6 +75,22 @@ def _consecutive_losses(rows: list) -> int:
     return streak
 
 
+def get_recent_paper_stats(window: int = None) -> dict:
+    """Last N closed paper trades — catches cold streaks before live."""
+    window = window or RECENT_TRADES_WINDOW
+    rows = get_closed_trades(limit=window)
+    n = len(rows)
+    if n == 0:
+        return {'n': 0, 'wins': 0, 'losses': 0, 'win_rate': 0.0}
+    wins = sum(1 for r in rows if r[2] == 'WIN')
+    return {
+        'n': n,
+        'wins': wins,
+        'losses': n - wins,
+        'win_rate': round(wins / n * 100, 1),
+    }
+
+
 def get_core_stats() -> dict:
     rows = get_closed_trades()
     total = len(rows)
@@ -81,6 +101,7 @@ def get_core_stats() -> dict:
             'avg_win': 0, 'avg_loss': 0, 'consec_losses': 0,
             'trading_days': 0, 'target_exits': 0, 'sl_exits': 0,
             'efficiency_pct': 0.0, 'direction_ok_pct': 0.0,
+            'win_loss_ratio': 0.0,
         }
 
     wins   = [r for r in rows if r[2] == 'WIN']
@@ -103,6 +124,7 @@ def get_core_stats() -> dict:
         if 'direction correct' in lesson or 'valid setup' in lesson or 'perfect setup' in lesson:
             dir_ok += 1
     dir_pct = round(dir_ok / total * 100, 1) if total else 0
+    wl_ratio = round(avg_win / avg_loss, 2) if avg_loss > 0 else (99.0 if avg_win > 0 else 0.0)
 
     return {
         'total':           total,
@@ -120,6 +142,7 @@ def get_core_stats() -> dict:
         'sl_exits':        sl_exits,
         'efficiency_pct':  eff,
         'direction_ok_pct': dir_pct,
+        'win_loss_ratio': wl_ratio,
     }
 
 
@@ -208,13 +231,35 @@ def assess_live_readiness() -> dict:
     all_ok &= gate('Active days', s['trading_days'] >= MIN_PAPER_DAYS,
                    f"{s['trading_days']}/{MIN_PAPER_DAYS} days with trades")
     all_ok &= gate('Win rate', s['win_rate'] >= MIN_WIN_RATE,
-                   f"{s['win_rate']}% (need {MIN_WIN_RATE}%+)")
+                   f"{s['win_rate']}% (need {MIN_WIN_RATE}%+ leg-1 breakeven)")
+
+    recent = get_recent_paper_stats()
+    if s['total'] >= RECENT_TRADES_WINDOW:
+        all_ok &= gate(
+            'Recent form',
+            recent['win_rate'] >= MIN_RECENT_WIN_RATE,
+            f"Last {recent['n']} trades: {recent['win_rate']}% "
+            f"(need {MIN_RECENT_WIN_RATE}%+)",
+        )
+
+    if s['losses'] >= 3 and s['avg_loss'] > 0:
+        all_ok &= gate(
+            'Win/loss size',
+            s['win_loss_ratio'] >= MIN_WIN_LOSS_RATIO,
+            f"₹{s['avg_win']:,} / ₹{s['avg_loss']:,} = {s['win_loss_ratio']}x "
+            f"(need {MIN_WIN_LOSS_RATIO}x+ — leg-1 payoff shape)",
+        )
+
     all_ok &= gate('Paper P&L', s['total_pnl'] >= 0,
                    f"₹{s['total_pnl']:,} (must be positive)")
     all_ok &= gate('Profit factor', s['profit_factor'] >= MIN_PROFIT_FACTOR,
                    f"{s['profit_factor']} (need {MIN_PROFIT_FACTOR}+)")
-    all_ok &= gate('Expectancy', s['expectancy'] > 0,
-                   f"₹{s['expectancy']}/trade")
+    if s['total'] >= MIN_PAPER_TRADES:
+        all_ok &= gate('Expectancy', s['expectancy'] >= MIN_EXPECTANCY_RS,
+                       f"₹{s['expectancy']}/trade (need ₹{MIN_EXPECTANCY_RS}+)")
+    else:
+        all_ok &= gate('Expectancy', s['expectancy'] > 0,
+                       f"₹{s['expectancy']}/trade (building toward ₹{MIN_EXPECTANCY_RS}+)")
     all_ok &= gate('Loss streak', s['consec_losses'] < MAX_CONSEC_LOSSES,
                    f"{s['consec_losses']} consecutive (max {MAX_CONSEC_LOSSES - 1})")
     all_ok &= gate('Confidence', conf['score'] >= MIN_CONFIDENCE,
@@ -344,10 +389,20 @@ def format_readiness_report() -> str:
         f"  Profit factor: {s['profit_factor']}",
         f"  Expectancy: ₹{s['expectancy']}/trade",
         f"  Avg win ₹{s['avg_win']:,} | Avg loss ₹{s['avg_loss']:,}",
+    ]
+    if s['total'] >= RECENT_TRADES_WINDOW:
+        rec = get_recent_paper_stats()
+        lines.append(
+            f"  Recent {rec['n']} trades: {rec['win_rate']}% WR "
+            f"(gate {MIN_RECENT_WIN_RATE}%+)"
+        )
+    if s['win_loss_ratio'] and s['avg_loss'] > 0:
+        lines.append(
+            f"  Win/loss ratio: {s['win_loss_ratio']}x (gate {MIN_WIN_LOSS_RATIO}x+)"
+        )
+    lines += [
         f"  Target exits: {s['efficiency_pct']}% of trades",
         f"  Direction correct: {s['direction_ok_pct']}%",
-    ]
-    lines += [
         "",
         "*R-multiple & drawdown:*",
     ]
