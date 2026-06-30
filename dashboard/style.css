@@ -92,14 +92,6 @@ button:hover { opacity: 0.9; }
   border-color: var(--accent);
 }
 
-.tab-panel {
-  display: none;
-}
-
-.tab-panel.active {
-  display: grid;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -107,6 +99,11 @@ button:hover { opacity: 0.9; }
   padding: 1rem 1.5rem 2rem;
   max-width: 1400px;
   margin: 0 auto;
+}
+
+/* Must come after .grid — both classes share the same <main> nodes */
+main.grid.tab-panel:not(.active) {
+  display: none;
 }
 
 @media (max-width: 900px) {
