@@ -259,6 +259,11 @@ def scheduler(messenger: Messenger):
                     )
                     messenger.send(format_daily_sim_training_report())
                     maybe_send_graduation(messenger)
+                    try:
+                        from src.valid_training_days import mark_today_if_valid
+                        mark_today_if_valid()
+                    except Exception:
+                        pass
                 except Exception as e:
                     STATE.add_error(f"Sim report: {str(e)[:40]}")
 
@@ -379,6 +384,11 @@ def scheduler(messenger: Messenger):
                 last_weekly = now.day
                 messenger.send(BRAIN.weekly_report())
                 try:
+                    from src.weekly_training_report import format_weekly_training_report
+                    messenger.send(format_weekly_training_report())
+                except Exception:
+                    pass
+                try:
                     from src.history_backtest import refresh_backtest_summary, format_backtest_report
                     from src.market_context import refresh_market_context
                     from src.groww_auth import fetch_groww_token
@@ -403,6 +413,11 @@ def main():
     print(f"   Time: {datetime.now(IST).strftime('%d %b %Y %I:%M %p IST')}")
     print("="*55)
     msg = Messenger()
+    try:
+        from src.health_server import start_health_server
+        start_health_server()
+    except Exception:
+        pass
     if not paper:
         from src.brain_metrics import assess_live_readiness
         ready = assess_live_readiness()

@@ -28,7 +28,12 @@ REGIMES = ('TRENDING', 'RANGING', 'UNKNOWN')
 
 
 def _conn():
-    return sqlite3.connect(DB_FILE)
+    from src.db_persistence import connect
+    return connect()
+
+
+def labeled_sample_count() -> int:
+    return len(_load_training_rows())
 
 
 def _ensure_model_dir():
@@ -292,6 +297,16 @@ def train_model(force: bool = False) -> dict:
 
     with open(META_FILE, 'w') as f:
         json.dump(meta, f)
+
+    try:
+        import shutil
+        archive = os.path.join(MODEL_DIR, 'archive')
+        os.makedirs(archive, exist_ok=True)
+        stamp = datetime.now(IST).strftime('%Y%m%d_%H%M')
+        shutil.copy2(MODEL_FILE, os.path.join(archive, f'win_predictor_{stamp}.joblib'))
+        shutil.copy2(META_FILE, os.path.join(archive, f'win_predictor_{stamp}_meta.json'))
+    except Exception:
+        pass
 
     msg = f"RF CV {rf_info['cv_accuracy']}%"
     if nn_active:

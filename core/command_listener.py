@@ -328,6 +328,10 @@ class CommandListener(threading.Thread):
             from src.sim_evidence import format_evidence_report
             return format_evidence_report()
 
+        elif cmd == '/training':
+            from src.training_dashboard import format_training_dashboard
+            return format_training_dashboard()
+
         elif cmd == '/shadow':
             from src.shadow_learning import (
                 format_shadow_daily_section, learning_phase_info, format_auto_learning_status,

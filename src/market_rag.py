@@ -220,6 +220,30 @@ def ingest_trade_lesson(
     conn.close()
 
 
+def ingest_rule(tag: str, outcome: str, content: str, weight: float = 0.8):
+    """Add or update a rule/backtest chunk in knowledge base."""
+    init_knowledge_base()
+    conn = _conn()
+    existing = conn.execute(
+        "SELECT id FROM knowledge_chunks WHERE tags=? AND source='backtest'",
+        (tag,),
+    ).fetchone()
+    now = datetime.now(IST).strftime('%Y-%m-%d %H:%M')
+    if existing:
+        conn.execute(
+            "UPDATE knowledge_chunks SET content=?, weight=?, created_at=? WHERE id=?",
+            (content[:500], weight, now, existing[0]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO knowledge_chunks (tags, content, outcome, source, weight, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (tag, content[:500], outcome, 'backtest', weight, now),
+        )
+    conn.commit()
+    conn.close()
+
+
 def apply_rag_to_signal(signal: dict) -> dict:
     from core.shared_state import STATE
     ctx = STATE.get('market.context') or {}

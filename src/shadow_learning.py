@@ -25,7 +25,7 @@ SHADOW_MAX_PER_DAY = int(os.getenv('SHADOW_MAX_PER_DAY', '5'))
 SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
 SHADOW_ENABLED = os.getenv('SHADOW_LEARNING', 'true').lower() == 'true'
 VIRTUAL_TICK_SEC = int(os.getenv('VIRTUAL_TICK_SEC', '10'))
-VIRTUAL_TICK_IDLE_SEC = int(os.getenv('VIRTUAL_TICK_IDLE_SEC', '30'))
+USE_VALID_TRAINING_DAYS = os.getenv('USE_VALID_TRAINING_DAYS', 'true').lower() == 'true'
 
 _last_virtual_tick = 0.0
 
@@ -142,6 +142,17 @@ def training_elapsed_days() -> int:
 
 def training_phase() -> str:
     """SIM (week 1–2) → PAPER (week 3–4) → LIVE_READY (month done)."""
+    if USE_VALID_TRAINING_DAYS:
+        try:
+            from src.valid_training_days import get_valid_day_counts
+            vd = get_valid_day_counts()
+            if vd['sim_valid'] < SIM_ONLY_DAYS:
+                return 'SIM'
+            if vd['paper_valid'] < PAPER_PHASE_DAYS:
+                return 'PAPER'
+            return 'LIVE_READY'
+        except Exception:
+            pass
     elapsed = training_elapsed_days()
     if elapsed < SIM_ONLY_DAYS:
         return 'SIM'

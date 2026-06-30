@@ -257,6 +257,9 @@ def record_sim_entry(shadow_id: int, bias: str, entry_prem: float,
         })
     except Exception:
         pass
+
+
+def record_sim_tick(shadow_id: int, bnf: float, premium: float,
                     entry_prem: float, flow_score: int = 0,
                     prem_source: str = ''):
     """Log one monitoring tick — Groww LTP re-price."""

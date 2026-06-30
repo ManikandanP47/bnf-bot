@@ -39,6 +39,11 @@ if [[ -f .env ]]; then
   ensure_var SIM_SCAN_LOG true
   ensure_var SIM_EVIDENCE_JSONL true
   ensure_var SIM_EVIDENCE_FILE sim_evidence.jsonl
+  ensure_var USE_VALID_TRAINING_DAYS true
+  ensure_var MIN_SCANS_VALID_DAY 3
+  ensure_var STRUCTURED_LOG true
+  ensure_var HEALTH_ENABLED true
+  ensure_var HEALTH_PORT 8080
   ensure_var TELEGRAM_MIRROR_ENABLED true
   ensure_var MIN_PAPER_TRADES 20
   ensure_var MIN_WIN_RATE 56
@@ -57,6 +62,12 @@ if systemctl is-active --quiet bnf-bot; then
 else
   echo "❌ bnf-bot failed to start — check: journalctl -u bnf-bot -n 40"
   exit 1
+fi
+
+chmod +x deploy/smoke_test.sh 2>/dev/null || true
+if [[ -x deploy/smoke_test.sh ]]; then
+  sleep 8
+  ./deploy/smoke_test.sh || echo "⚠️ Smoke test warnings — check logs"
 fi
 
 echo "==> Last log lines:"

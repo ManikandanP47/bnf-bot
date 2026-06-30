@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install -r requirements.txt
+
+      - name: Compile check
+        run: |
+          ./venv/bin/python -m py_compile main.py
+          ./venv/bin/python -m compileall -q agents core src
+
+      - name: Import agents (split modules)
+        run: |
+          ./venv/bin/python -c "
+          from agents.risk_agent import RiskAgent
+          from agents.execution_agent import ExecutionAgent
+          from agents.monitor_agent import MonitorAgent
+          from agents.sim_learning_agent import SimLearningAgent
+          from agents.agents import RiskAgent as R2
+          from src.training_dashboard import format_training_dashboard
+          from src.valid_training_days import get_valid_day_counts
+          from src.sim_evidence import format_evidence_report
+          print('imports ok')
+          "
+
+      - name: ML tests
+        run: ./venv/bin/python tests/test_ml_nn.py
+
+      - name: Shadow roundtrip
+        run: ./venv/bin/python tests/test_shadow_roundtrip.py

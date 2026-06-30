@@ -134,7 +134,7 @@ try:
     cmds = [
         '/help', '/status', '/pnl', '/zone', '/pause', '/resume',
         '/journal', '/readiness', '/funnel', '/context', '/cpr',
-        '/flow', '/backtest', '/learn', '/shadow', '/simday', '/evidence', '/simreport', '/ml', '/groww', '/why',
+        '/flow', '/backtest', '/learn', '/training', '/shadow', '/simday', '/evidence', '/simreport', '/ml', '/groww', '/why',
         '/resetlearning',
     ]
     for c in cmds:
@@ -376,7 +376,7 @@ except Exception as e:
 # ─────────────────────────────────────────────────────────────
 section("8. Risk agent approve (mock signal)")
 try:
-    from agents.agents import RiskAgent
+    from agents.risk_agent import RiskAgent
     from core.messenger import Messenger
 
     class MockMsg2:

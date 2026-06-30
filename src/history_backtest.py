@@ -127,7 +127,29 @@ def refresh_backtest_summary(token: str = '') -> dict:
     from core.shared_state import STATE
     summary = run_quick_backtest(token=token)
     STATE.set('system.backtest_summary', summary)
+    _feed_backtest_to_rag(summary)
     return summary
+
+
+def _feed_backtest_to_rag(summary: dict):
+    """Inject proxy backtest insight into RAG for ML/context alignment."""
+    if not summary.get('available'):
+        return
+    try:
+        from src.market_rag import ingest_rule
+        wr = summary.get('proxy_win_rate', 0)
+        n = summary.get('proxy_trades', 0)
+        if n < 2:
+            return
+        ingest_rule(
+            f"backtest:proxy_{int(wr)}",
+            'BACKTEST',
+            f"Groww 10d proxy backtest: {wr:.0f}% WR over {n} morning setups "
+            f"(sanity check — not exact bot logic).",
+            min(0.95, 0.5 + wr / 200),
+        )
+    except Exception:
+        pass
 
 
 def format_backtest_report() -> str:
