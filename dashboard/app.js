@@ -319,6 +319,88 @@
     ].join('');
   }
 
+  function renderSimWallet(sw) {
+    if (!sw || sw.error) return;
+    const w = sw.wallet || {};
+    const t = sw.today || {};
+    const rec = sw.recovery || {};
+    const at = sw.all_time || {};
+
+    const balEl = document.getElementById('wallet-balance');
+    if (balEl) balEl.textContent = '₹' + fmt(w.balance, 0);
+    const phaseEl = document.getElementById('wallet-phase');
+    if (phaseEl) phaseEl.textContent = w.phase_label || w.phase || '—';
+
+    const statsEl = document.getElementById('wallet-stats');
+    if (statsEl) {
+      statsEl.innerHTML = [
+        stat('Available', '₹' + fmt(w.available, 0)),
+        stat('Reserved', '₹' + fmt(w.reserved, 0)),
+        stat('Lots allowed', w.lots_allowed ?? 1),
+        stat('Today P&L', '₹' + fmt(t.pnl, 0)),
+        stat('W/L today', (t.wins ?? 0) + '/' + (t.losses ?? 0)),
+        stat('All-time WR', at.win_rate != null ? at.win_rate + '%' : '—'),
+      ].join('');
+    }
+
+    const pct = w.progress_pct ?? 0;
+    const goalLbl = document.getElementById('wallet-goal-label');
+    if (goalLbl) goalLbl.textContent = 'Progress to ₹' + fmt(w.next_goal_rs || w.target_rs, 0);
+    const prog = document.getElementById('wallet-progress');
+    if (prog) prog.style.width = Math.min(100, pct) + '%';
+    const progTxt = document.getElementById('wallet-progress-text');
+    if (progTxt) progTxt.textContent = pct + '%';
+
+    const kv = document.getElementById('wallet-kv');
+    if (kv) {
+      kv.innerHTML = [
+        ['Start capital', '₹' + fmt(w.start_rs, 0)],
+        ['Cumulative P&L', '₹' + fmt(w.cumulative_pnl, 0)],
+        ['Target', '₹' + fmt(w.target_rs, 0) + ' → ₹' + fmt(w.max_rs, 0)],
+        ['Scale at', '₹' + fmt(w.scale_rs, 0) + ' (2 lots)'],
+        ['Open sims', t.open ?? 0],
+        ['Closed trades', at.trades ?? 0],
+      ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
+    }
+
+    const rkv = document.getElementById('recovery-pnl-kv');
+    if (rkv) {
+      const ds = rec.drill_stats || {};
+      rkv.innerHTML = [
+        ['Recovery window', rec.active ? '🔄 OPEN' : 'closed'],
+        ['Recovery P&L today', '₹' + fmt(t.recovery_pnl, 0)],
+        ['Recovery sims today', t.recovery_trades ?? 0],
+        ['Drill win rate', ds.wr != null ? ds.wr + '%' : '—'],
+        ['Drill samples', ds.samples ?? 0],
+        ['Weekly recovery', (rec.weekly_used ?? 0) + '/' + (rec.weekly_cap ?? 1)],
+      ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
+    }
+
+    const tbody = document.getElementById('sim-orders-body');
+    if (!tbody) return;
+    const orders = sw.orders && sw.orders.length ? sw.orders : (sw.orders_recent || []);
+    if (!orders.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No sim orders yet — scans run when market opens.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = orders.slice().reverse().map((o) => {
+      const st = o.status || '—';
+      const cls = o.outcome === 'WIN' ? 'win' : o.outcome === 'LOSS' ? 'loss' : (st === 'OPEN' ? 'open' : '');
+      const pnl = st === 'CLOSED' ? '₹' + fmt(o.pnl_rs, 0) : '—';
+      const recTag = o.is_recovery ? '<span class="tag-recovery">🔄</span>' : '';
+      return `<tr class="${cls}">
+        <td>${o.id}${recTag}</td>
+        <td>${o.entry_time || ''}${o.exit_time ? '→' + o.exit_time : ''}</td>
+        <td>${o.option_name || '—'}<br><span style="color:var(--muted)">${o.session || ''}</span></td>
+        <td>${o.lots ?? 1}</td>
+        <td>₹${fmt(o.entry_prem, 0)}</td>
+        <td>${o.exit_prem ? '₹' + fmt(o.exit_prem, 0) : '—'}</td>
+        <td>${pnl}</td>
+        <td>${st}${o.outcome ? ' ' + o.outcome : ''}</td>
+      </tr>`;
+    }).join('');
+  }
+
   function renderLearningFeed(lf) {
     if (!lf) return;
     const s = lf.summary || {};
@@ -393,6 +475,7 @@
       renderML(d.ml || {});
       renderIntelligence(d.intelligence || {});
       renderExecuteGap(d.execute_gap);
+      renderSimWallet(d.sim_wallet);
       renderSimRealism(d.sim_realism);
       renderLearningFeed(d.learning_feed);
       renderGreeks(d.greeks);

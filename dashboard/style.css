@@ -347,6 +347,47 @@ footer code {
   border-radius: 4px;
 }
 
+.progress-fill.wallet { background: linear-gradient(90deg, #3fb950, #58a6ff); }
+
+.wallet-hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+.wallet-balance .label { font-size: 0.75rem; color: var(--muted); display: block; }
+.wallet-cols { margin-top: 0.5rem; }
+
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.orders-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.orders-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.orders-table tr.win td:last-child { color: var(--green); }
+.orders-table tr.loss td:last-child { color: var(--red); }
+.orders-table tr.open td { opacity: 0.95; }
+.sim-orders-table-wrap { max-height: 320px; overflow: auto; }
+.tag-recovery {
+  font-size: 0.65rem;
+  background: rgba(88, 166, 255, 0.15);
+  color: #58a6ff;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  margin-left: 0.25rem;
+}
+
 .gap-verdict {
   font-size: 0.9rem;
   padding: 0.6rem 0.8rem;

@@ -180,6 +180,14 @@ def _greeks_payload() -> dict:
         return {'error': str(e)[:80]}
 
 
+def _sim_wallet_payload() -> dict:
+    try:
+        from src.sim_wallet import build_sim_wallet_payload
+        return build_sim_wallet_payload()
+    except Exception as e:
+        return {'error': str(e)[:80]}
+
+
 def build_dashboard_payload() -> dict:
     from src.intelligence_brief import build_intelligence_brief
     from src.db_persistence import get_table_counts, format_persistence_line
@@ -206,6 +214,7 @@ def build_dashboard_payload() -> dict:
         'sim_realism': _sim_realism_payload(),
         'learning_feed': _learning_feed_payload(),
         'greeks': _greeks_payload(),
+        'sim_wallet': _sim_wallet_payload(),
         'evidence_tail': _recent_evidence(20),
     }
     try:

@@ -341,12 +341,24 @@ def open_explore_sim(setup: dict) -> dict:
     init_shadow_tables()
 
     params = setup['params']
+    from src.sim_wallet import plan_sim_order, is_recovery_sim_window
+    is_rec = (
+        is_recovery_sim_window()
+        and setup.get('session') in ('AFTERNOON_MOVE',)
+        and int(setup.get('sim_score', 0) or 0) >= int(os.getenv('RECOVERY_MIN_SCORE', '9'))
+    )
+    plan = plan_sim_order(params.get('premium', 0), is_recovery=is_rec)
+    if not plan.get('ok'):
+        return {'opened': False, 'reason': plan.get('reason', 'wallet')}
+
+    lots = plan['lots']
+    lot_cost = plan['lot_cost']
     today = datetime.now(IST).strftime('%Y-%m-%d')
     now = datetime.now(IST)
     reasons_txt = '; '.join(setup.get('reasons', [])[:4])
     prediction = (
         f"{setup['bias']} sim — BNF {setup['price']:,.0f} | "
-        f"{params['name']} @ ₹{params['premium']} → tgt ₹{params['tgt_prem']}"
+        f"{params['name']} @ ₹{params['premium']} × {lots} lot → tgt ₹{params['tgt_prem']}"
     )
 
     conn = _conn()
@@ -355,8 +367,9 @@ def open_explore_sim(setup: dict) -> dict:
             date, entry_time, option_name, bias, session, score, regime,
             bnf_entry, strike, opt_type, expiry, entry_prem, sl_prem, tgt_prem,
             prediction, rag_notes, status, sim_source, sim_score, range_note,
-            entry_reasons, mae_prem, mfe_prem, peak_pnl_rs, prem_source
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            entry_reasons, mae_prem, mfe_prem, peak_pnl_rs, prem_source,
+            lots, is_recovery, lot_cost
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         today, now.strftime('%H:%M'),
         params['name'], setup['bias'], setup.get('session', ''),
@@ -368,6 +381,7 @@ def open_explore_sim(setup: dict) -> dict:
         setup.get('sim_score', 0), params.get('range_note', ''),
         reasons_txt, params['premium'], params['premium'], 0.0,
         params.get('prem_source', 'DELTA_MODEL'),
+        lots, 1 if is_rec else 0, lot_cost,
     ))
     conn.commit()
     sid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

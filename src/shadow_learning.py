@@ -73,6 +73,9 @@ def _migrate_shadow_columns(conn):
         ('peak_pnl_rs', 'REAL'),
         ('entry_flow_score', 'INTEGER'),
         ('prem_source', 'TEXT'),
+        ('lots', 'INTEGER'),
+        ('is_recovery', 'INTEGER'),
+        ('lot_cost', 'REAL'),
     ]:
         if name not in existing:
             conn.execute(f"ALTER TABLE shadow_trades ADD COLUMN {name} {typ}")
@@ -446,7 +449,7 @@ def tick_shadow_trades():
         SELECT id, bnf_entry, entry_prem, sl_prem, tgt_prem, strike, opt_type,
                expiry, bias, option_name, score, session, regime, prediction,
                sim_source, mae_prem, mfe_prem, peak_pnl_rs, entry_flow_score,
-               entry_time
+               entry_time, COALESCE(lots, 1)
         FROM shadow_trades WHERE date=? AND status='OPEN'
     """, (today,)).fetchall()
     if not rows:
@@ -465,7 +468,8 @@ def tick_shadow_trades():
     for row in rows:
         (sid, bnf_e, entry_p, sl_p, tgt_p, strike, otype, expiry,
          bias, name, score, session, regime, prediction,
-         sim_source, mae_p, mfe_p, peak_pnl, entry_flow, entry_time) = row
+         sim_source, mae_p, mfe_p, peak_pnl, entry_flow, entry_time, lots) = row
+        qty = int(lots or 1) * 15
 
         pos = {
             'entry_price': entry_p, 'bnf_at_entry': bnf_e,
@@ -478,10 +482,13 @@ def tick_shadow_trades():
         from src.trade_analytics import virtual_sell_fill_price, virtual_live_pnl, SIM_LIVE_FILLS
         sell = virtual_sell_fill_price(est)
         sell_fill = sell['fill']
-        live = virtual_live_pnl(entry_p, est)
-        pnl = live['pnl_rs'] if SIM_LIVE_FILLS else mtm['pnl_rs']
+        live = virtual_live_pnl(entry_p, est, qty=qty)
+        pnl = live['pnl_rs'] if SIM_LIVE_FILLS else round(mtm['pnl_rs'] * int(lots or 1), 0)
         from src.sim_realism import apply_sim_txn_costs
+        txn = float(os.getenv('SIM_ROUND_TRIP_COST_RS', '65'))
         pnl = apply_sim_txn_costs(pnl)
+        if int(lots or 1) > 1:
+            pnl = round(pnl - txn * (int(lots) - 1), 0)
         prem_src = mtm.get('prem_source', '')
 
         if not mtm.get('is_real') and est <= 0:
