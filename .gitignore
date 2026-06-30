@@ -8,6 +8,8 @@
 !position_state.json
 !heartbeat.json
 *.log
+telegram_mirror.jsonl
+logs/
 backups/
 models/
 .groww_token_cache.json

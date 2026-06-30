@@ -2,6 +2,14 @@
 import requests, time, os
 
 
+def _mirror_out(text: str, kind: str = 'text'):
+    try:
+        from src.telegram_mirror import mirror_message
+        mirror_message('out', text, kind=kind)
+    except Exception:
+        pass
+
+
 class Messenger:
     def __init__(self):
         self.token   = os.getenv('TELEGRAM_BOT_TOKEN', '')
@@ -34,6 +42,7 @@ class Messenger:
                     payload['parse_mode'] = mode
                 ok, err = self._post_message(payload)
                 if ok:
+                    _mirror_out(body, kind='buttons' if 'reply_markup' in payload else 'text')
                     return True
                 if mode and 'parse' in err.lower():
                     print(f"⚠️  Telegram Markdown failed, retrying plain text: {err}")
@@ -57,6 +66,7 @@ class Messenger:
             payload = {'chat_id': self.chat_id, 'text': body, **extra}
             ok, err = self._post_message(payload)
             if ok:
+                _mirror_out(body, kind='buttons')
                 return True
             if err:
                 print(f"⚠️  Telegram buttons send failed: {err}")

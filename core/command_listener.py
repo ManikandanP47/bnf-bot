@@ -398,6 +398,11 @@ class CommandListener(threading.Thread):
                     if not text.startswith('/'):
                         continue
                     print(f"📱 Command: {text}")
+                    try:
+                        from src.telegram_mirror import mirror_message
+                        mirror_message('in', text, kind='command')
+                    except Exception:
+                        pass
                     threading.Thread(
                         target=self._process_command,
                         args=(text,),

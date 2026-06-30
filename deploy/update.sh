@@ -36,6 +36,7 @@ if [[ -f .env ]]; then
   ensure_var POST_LEARNING_MAX_TRADES_DAY 2
   ensure_var SHADOW_MIN_WR 40
   ensure_var SIM_TELEGRAM_QUIET true
+  ensure_var TELEGRAM_MIRROR_ENABLED true
 fi
 
 echo "==> Restarting bnf-bot..."

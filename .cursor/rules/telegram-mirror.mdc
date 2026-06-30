@@ -1,0 +1,36 @@
+---
+description: When user asks about bot Telegram alerts, training, or daily reports — pull the mirror log instead of asking them to paste.
+globs:
+alwaysApply: false
+---
+
+# Telegram mirror for agent review
+
+The bot logs every Telegram message (in + out) to `telegram_mirror.jsonl` on the server.
+
+## Pull recent messages (no user copy-paste)
+
+```bash
+cd /Users/manikandan.palanisamy/Downloads/bnf-bot-main
+python3 scripts/pull_telegram_mirror.py --limit 50
+```
+
+Then read: `logs/telegram_mirror.jsonl`
+
+## Server path
+
+`~/bnf-bot/telegram_mirror.jsonl` on `BOT_SERVER_SSH` from `.env` (default `root@64.227.177.10`).
+
+## When to pull
+
+- User shares or asks about morning brief, sim report, /groww, errors
+- User says "check telegram" or "what did the bot send"
+- Debugging training phase / sim count without asking user to paste
+
+## SSH one-liner (if scp fails)
+
+```bash
+ssh root@SERVER 'tail -40 ~/bnf-bot/telegram_mirror.jsonl'
+```
+
+Do not commit `telegram_mirror.jsonl` or paste bot tokens from the log.
