@@ -167,6 +167,14 @@ def _learning_feed_payload() -> dict:
         return {'error': str(e)[:80], 'feed': []}
 
 
+def _greeks_payload() -> dict:
+    try:
+        from src.option_greeks import get_greeks_dashboard
+        return get_greeks_dashboard()
+    except Exception as e:
+        return {'error': str(e)[:80]}
+
+
 def build_dashboard_payload() -> dict:
     from src.intelligence_brief import build_intelligence_brief
     from src.db_persistence import get_table_counts, format_persistence_line
@@ -192,6 +200,7 @@ def build_dashboard_payload() -> dict:
         'playbook': build_playbook_payload(phase),
         'sim_realism': _sim_realism_payload(),
         'learning_feed': _learning_feed_payload(),
+        'greeks': _greeks_payload(),
         'evidence_tail': _recent_evidence(20),
     }
     try:

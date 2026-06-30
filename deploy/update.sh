@@ -38,6 +38,8 @@ if [[ -f .env ]]; then
   ensure_var SIM_TELEGRAM_QUIET true
   ensure_var SIM_SCAN_LOG true
   ensure_var SIM_LEARNING_LOG true
+  ensure_var GREEKS_ENABLED true
+  ensure_var CHAIN_REFRESH_SEC 900
   ensure_var SIM_EVIDENCE_JSONL true
   ensure_var SIM_EVIDENCE_FILE sim_evidence.jsonl
   ensure_var USE_VALID_TRAINING_DAYS true

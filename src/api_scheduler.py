@@ -11,6 +11,7 @@ TTL = {
     'groww_historical': 300,
     'groww_option_ltp': 10,
     'nse_oi':           300,
+    'nse_chain_greeks': 900,
     'vix':              300,
     'market_context':   600,
     'market_flow':      300,

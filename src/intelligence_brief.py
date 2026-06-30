@@ -126,6 +126,9 @@ def _build_suggestions(session, zone, rag, patterns, ml, backtest) -> list:
 
 def _intelligence_roadmap() -> list:
     return [
+        {'id': 'greeks', 'status': 'active',
+         'title': 'Greeks + NSE IV',
+         'detail': 'Delta/theta/vega from chain IV; ML features at trade close'},
         {'id': 'embeddings', 'status': 'planned',
          'title': 'Embedding RAG',
          'detail': 'Semantic lesson search after 50+ closes'},

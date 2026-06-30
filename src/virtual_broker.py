@@ -234,8 +234,18 @@ def record_sim_entry(shadow_id: int, bias: str, entry_prem: float,
         'prem_source': (params or {}).get('prem_source', ''),
         'strike': (params or {}).get('strike'),
         'opt_type': (params or {}).get('opt_type'),
+        'expiry': (params or {}).get('expiry'),
         'chart': ctx,
     }
+    try:
+        from src.option_greeks import greeks_for_contract
+        if entry.get('strike') and entry.get('expiry'):
+            entry['greeks'] = greeks_for_contract(
+                float(entry['strike']), entry['opt_type'] or 'CE',
+                entry['expiry'], entry_prem,
+            )
+    except Exception:
+        pass
 
     conn = _conn()
     conn.execute("""

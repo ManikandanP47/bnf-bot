@@ -61,6 +61,7 @@ def _extract_features_from_shadow(row: dict, entry_json: str = '') -> dict:
     regime = row.get('regime') or ch.get('regime') or 'UNKNOWN'
     bias = row.get('bias') or 'NEUTRAL'
 
+    gk = entry.get('greeks') or {}
     feats = {
         'hour': _parse_hour(row.get('entry_time', '')),
         'flow_score': float(row.get('entry_flow_score') or ch.get('flow_score') or 0),
@@ -72,6 +73,13 @@ def _extract_features_from_shadow(row: dict, entry_json: str = '') -> dict:
         'choch_5m': 1.0 if ch.get('choch_5m') else 0.0,
         'structure_bull': 1.0 if ch.get('structure_15m') == 'BULLISH' else 0.0,
         'structure_bear': 1.0 if ch.get('structure_15m') == 'BEARISH' else 0.0,
+        'delta': float(gk.get('delta', 0)),
+        'gamma': float(gk.get('gamma', 0)),
+        'theta_lot': float(gk.get('theta_per_lot_day', 0)),
+        'vega_lot': float(gk.get('vega_per_lot_1pct', 0)),
+        'iv_pct': float(gk.get('iv_pct', 0)),
+        'iv_rank': float(gk.get('iv_rank', 50)),
+        'dte': float(gk.get('dte_days', 0)),
     }
     for s in SESSIONS:
         feats[f'sess_{s}'] = 1.0 if session == s else 0.0

@@ -126,6 +126,23 @@ def build_learning_snapshot(scan_result: dict) -> dict:
         )
 
     lessons.append(f'15m structure: {struct}')
+
+    try:
+        from src.option_greeks import get_greeks_dashboard, format_greeks_lesson
+        gd = get_greeks_dashboard()
+        ch = gd.get('chain') or {}
+        if ch.get('atm_iv_avg'):
+            lessons.append(
+                f"ATM IV {ch.get('atm_iv_avg', 0)*100:.1f}% "
+                f"rank {ch.get('iv_rank', 50):.0f} · PCR {ch.get('pcr', '—')}"
+            )
+        cg = gd.get('contract') or {}
+        gl = format_greeks_lesson(cg)
+        if gl:
+            lessons.append(f'Greeks: {gl}')
+    except Exception:
+        pass
+
     if event == 'SKIP' and reason:
         lessons.append(f'Decision: skip — {reason}')
     elif event == 'OPEN':

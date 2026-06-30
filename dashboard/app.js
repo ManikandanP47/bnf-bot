@@ -279,6 +279,27 @@
     });
   });
 
+  function renderGreeks(g) {
+    if (!g || g.error) return;
+    const ch = g.chain || {};
+    document.getElementById('greeks-note').textContent = g.math_note || '';
+    document.getElementById('greeks-chain').innerHTML = [
+      stat('ATM IV', ch.atm_iv_avg ? (ch.atm_iv_avg * 100).toFixed(1) + '%' : '—'),
+      stat('IV rank', ch.iv_rank != null ? ch.iv_rank : '—'),
+      stat('PCR', ch.pcr != null ? ch.pcr : '—'),
+      stat('Max pain', ch.max_pain ? fmt(ch.max_pain, 0) : '—'),
+      stat('Updated', ch.timestamp || '—'),
+    ].join('');
+    const c = g.contract || {};
+    document.getElementById('greeks-contract').innerHTML = [
+      stat('Delta δ', c.delta != null ? c.delta : '—'),
+      stat('Theta θ/lot/d', c.theta_per_lot_day != null ? '₹' + c.theta_per_lot_day : '—'),
+      stat('Vega ν/lot/1%', c.vega_per_lot_1pct != null ? '₹' + c.vega_per_lot_1pct : '—'),
+      stat('Gamma γ', c.gamma != null ? c.gamma : '—'),
+      stat('DTE', c.dte_days != null ? c.dte_days : '—'),
+    ].join('');
+  }
+
   function renderLearningFeed(lf) {
     if (!lf) return;
     const s = lf.summary || {};
@@ -340,6 +361,7 @@
       renderExecuteGap(d.execute_gap);
       renderSimRealism(d.sim_realism);
       renderLearningFeed(d.learning_feed);
+      renderGreeks(d.greeks);
       renderPlaybook(d.playbook);
       renderAgents(d.agents || {});
       renderSystem(d.groww, d.persistence || {}, d.persistence_line);

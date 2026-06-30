@@ -46,11 +46,32 @@ PLAYBOOK_METRICS = [
         'trade': 'CE near resistance = bad R:R. Wait for break + retest.',
     },
     {
+        'id': 'delta',
+        'name': 'Delta (δ)',
+        'math': '∂Premium/∂BNF — BS model from NSE IV',
+        'use': 'How much premium moves per ₹1 BNF move. CE 0.3–0.5 typical OTM.',
+        'trade': 'Low delta = lottery ticket. High delta = expensive but follows spot.',
+    },
+    {
         'id': 'theta',
-        'name': 'Theta (time decay)',
-        'math': 'Premium bleed ∝ 1/DTE × hours_left × premium',
-        'use': 'Hard no new entries after 2 PM. 0–2 DTE = gamma risk.',
-        'trade': 'Trade morning; afternoon = manage exits only.',
+        'name': 'Theta (θ)',
+        'math': 'Premium lost per day if BNF flat — accelerates near expiry',
+        'use': 'Bot blocks afternoon entries; sim deducts theta risk score.',
+        'trade': 'Morning buy, afternoon manage. Never hold 0DTE into lunch.',
+    },
+    {
+        'id': 'vega',
+        'name': 'Vega (ν)',
+        'math': 'Premium change per 1% IV move — from NSE chain ATM IV',
+        'use': 'IV crush on quiet days kills CE/PE even if direction right.',
+        'trade': 'Buy when IV rank low; avoid buying when IV spike already happened.',
+    },
+    {
+        'id': 'gamma',
+        'name': 'Gamma (γ)',
+        'math': 'Rate delta changes — spikes on expiry day',
+        'use': 'Expiry day blocked for new longs on ₹5k account.',
+        'trade': 'Pros sell gamma; small buyers must avoid expiry afternoon.',
     },
 ]
 

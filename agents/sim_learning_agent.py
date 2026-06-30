@@ -26,6 +26,11 @@ class SimLearningAgent(threading.Thread):
         while STATE.get('system.running'):
             try:
                 if STATE.get('system.market_open') and not STATE.get('system.paused'):
+                    try:
+                        from src.option_greeks import refresh_chain_snapshot
+                        refresh_chain_snapshot()
+                    except Exception:
+                        pass
                     from src.market_simulator import scan_and_maybe_open
                     result = scan_and_maybe_open()
                     if result.get('opened'):
