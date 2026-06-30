@@ -413,3 +413,16 @@ footer code {
   align-items: center;
   justify-content: center;
 }
+
+.learning-feed { max-height: 280px; }
+.learning-feed .learn-row {
+  padding: 0.5rem 0.65rem;
+  margin-bottom: 0.4rem;
+  background: var(--bg);
+  border-radius: 8px;
+  border-left: 3px solid var(--border);
+  font-size: 0.8rem;
+}
+.learning-feed .learn-row.open { border-left-color: var(--green); }
+.learning-feed .learn-row.skip { border-left-color: var(--muted); }
+.learning-feed .meta { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.2rem; }

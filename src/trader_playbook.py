@@ -91,6 +91,7 @@ def build_playbook_payload(phase: str = 'SIM') -> dict:
         'SIM': [
             'Week 1–2: bot scans market every ~4 min — learning chart context.',
             'Valid day = ≥3 scans OR ≥1 sim close. Empty days do not count.',
+            'Dashboard Learning Feed shows every observation — even skips.',
             'Ignore sim win rate; watch scan count + execute gap on dashboard.',
             '/execute is locked — no paper orders yet.',
         ],
@@ -136,5 +137,8 @@ def build_playbook_payload(phase: str = 'SIM') -> dict:
             'Premium sweet spot ₹120–₹280 for ₹5k — below = spread kills edge.',
             '70%+ retail option buyers lose — sim WR does not predict live edge.',
             'Trust paper /execute stats + /readiness gates, not virtual gym P&L.',
+            'Learning ≠ trading: bot observes flow/OI/theta/S/R every scan without opening.',
+            'Pre-market: evening scan (~8:15 PM) sets next day zone — no live pre-market orders.',
+            'Multi-leg hedges need more capital — not for ₹5k; single lot + tight SL first.',
         ],
     }

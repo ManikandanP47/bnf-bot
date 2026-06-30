@@ -279,6 +279,25 @@
     });
   });
 
+  function renderLearningFeed(lf) {
+    if (!lf) return;
+    const s = lf.summary || {};
+    document.getElementById('learning-stats').innerHTML = [
+      stat('Observations', s.observations_today ?? 0),
+      stat('Virtual opens', s.virtual_opens ?? 0),
+      stat('Skips logged', s.skips_logged ?? 0),
+    ].join('');
+    const feed = lf.feed || [];
+    document.getElementById('learning-feed').innerHTML = feed.length
+      ? feed.map((r) =>
+          `<div class="learn-row ${(r.event || '').toLowerCase()}">
+            <div class="meta">${r.time} · ${r.event} · ${r.session} · score ${r.sim_score ?? '—'} · ₹${fmt(r.price, 0)}</div>
+            <div>${r.lesson || '—'}</div>
+          </div>`
+        ).join('')
+      : '<div class="learn-row skip"><div class="meta">No observations yet today</div><div>Scans start when market opens (~9:20 AM). Each scan logs what the bot sees — even skips.</div></div>';
+  }
+
   function renderSimRealism(r) {
     if (!r || r.error) return;
     document.getElementById('realism-stats').innerHTML = [
@@ -320,6 +339,7 @@
       renderIntelligence(d.intelligence || {});
       renderExecuteGap(d.execute_gap);
       renderSimRealism(d.sim_realism);
+      renderLearningFeed(d.learning_feed);
       renderPlaybook(d.playbook);
       renderAgents(d.agents || {});
       renderSystem(d.groww, d.persistence || {}, d.persistence_line);

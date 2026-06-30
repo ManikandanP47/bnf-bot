@@ -416,6 +416,11 @@ def scan_and_maybe_open() -> dict:
             'snapshot': setup.get('snapshot'),
         }
         _log_scan(result)
+        try:
+            from src.sim_market_learn import log_sim_learning
+            log_sim_learning(result)
+        except Exception:
+            pass
         return result
 
     result = open_explore_sim(setup)
@@ -425,6 +430,11 @@ def scan_and_maybe_open() -> dict:
     result['reasons'] = setup.get('reasons', [])
     result['snapshot'] = setup.get('snapshot')
     _log_scan(result)
+    try:
+        from src.sim_market_learn import log_sim_learning
+        log_sim_learning(result)
+    except Exception:
+        pass
     return result
 
 
