@@ -13,10 +13,10 @@ IST = pytz.timezone('Asia/Kolkata')
 DB_FILE = os.getenv('DB_PATH', 'trader_brain.db')
 SHADOW_MIN_WR = float(os.getenv('SHADOW_MIN_WR', os.getenv('MIN_SIM_GRAD_WR', '40')))
 
-MIN_PAPER_TRADES = int(os.getenv('MIN_PAPER_TRADES', '10'))
+MIN_PAPER_TRADES = int(os.getenv('MIN_PAPER_TRADES', '20'))
 MIN_PAPER_DAYS   = int(os.getenv('MIN_PAPER_DAYS', '14'))
 LEARNING_PHASE_DAYS = int(os.getenv('LEARNING_PHASE_DAYS', '14'))
-MIN_WIN_RATE     = float(os.getenv('MIN_WIN_RATE', '45'))
+MIN_WIN_RATE     = float(os.getenv('MIN_WIN_RATE', '56'))
 MIN_PROFIT_FACTOR = float(os.getenv('MIN_PROFIT_FACTOR', '1.2'))
 MIN_CONFIDENCE   = int(os.getenv('MIN_PAPER_CONFIDENCE', '60'))
 MAX_CONSEC_LOSSES = int(os.getenv('MAX_CONSEC_LOSSES', '3'))
@@ -375,6 +375,7 @@ def format_readiness_report() -> str:
         "  No entries after 2 PM (1 PM Wed expiry)",
         "  Max SL risk 25% of capital per trade",
         "  Expiry ≥5 days — skips expiry-week theta",
+        f"  Leg-1 breakeven target: *{MIN_WIN_RATE}%+* WR ({MIN_PAPER_TRADES}+ paper trades)",
         "",
         f"*{r['reason']}*",
         "",
