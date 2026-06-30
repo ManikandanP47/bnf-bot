@@ -182,6 +182,12 @@ class CommandListener(threading.Thread):
                     shadow_line = f"\n*Min score:* {dyn} (raised from {base})"
             except Exception:
                 pass
+            persist_line = ''
+            try:
+                from src.db_persistence import format_persistence_line
+                persist_line = f"\n*Persisted:* {format_persistence_line()}"
+            except Exception:
+                pass
             return (
                 f"📊 *Bot Status — {now}*\n"
                 f"━━━━━━━━━━━━━━━━━\n"
@@ -193,7 +199,8 @@ class CommandListener(threading.Thread):
                 f"*Zone:* {'✅ ' + f'{zone_low:,.0f}–{zone_high:,.0f}' if zone_active else 'None'}\n\n"
                 f"*Today:* {trades_today} trade(s) | {pnl_emoji} ₹{today_pnl:,.0f}\n"
                 f"*Week losses:* {weekly_loss}/2\n"
-                f"*Brain:* {brain.get('learning_stage', 'EARLY')}{shadow_line}{backup_line}\n\n"
+                f"*Brain:* {brain.get('learning_stage', 'EARLY')}{shadow_line}{backup_line}"
+                f"{persist_line}\n\n"
                 f"*Live readiness:* {live_reason}"
             )
 

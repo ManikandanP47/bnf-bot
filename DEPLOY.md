@@ -109,6 +109,24 @@ sudo systemctl restart bnf-bot
 
 Note: JWT token cache is **not** backed up (security). Bot re-authenticates via TOTP on restart.
 
+### Data survives restarts
+
+All training data lives on disk under `~/bnf-bot/` — **systemd restart does not delete it**:
+
+| File | Contents |
+|------|----------|
+| `trader_brain.db` | Sim trades, scans, patterns, ML, paper journal |
+| `sim_evidence.jsonl` | Append-only audit log |
+| `daily_zone.json` | Evening scan zone |
+| `models/` | ML RF + NN weights |
+| `backups/YYYY-MM-DD/` | Daily copy at 3:40 PM |
+
+On every startup the bot compares row counts to the previous run. If data **shrinks** after a restart, you get a Telegram alert.
+
+**Never** run `rm trader_brain.db` unless you intentionally want to wipe all learning.
+
+Only scheduled deletion: `sim_ticks` older than 30 days (during 3:40 PM backup only).
+
 ## Manual run (not recommended)
 
 Only use if you are not using systemd:

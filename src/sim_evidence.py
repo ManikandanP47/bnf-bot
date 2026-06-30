@@ -22,7 +22,8 @@ MAX_JSONL_LINES = int(os.getenv('SIM_EVIDENCE_MAX_LINES', '5000'))
 
 
 def _conn():
-    return sqlite3.connect(DB_FILE)
+    from src.db_persistence import connect
+    return connect()
 
 
 def _today() -> str:
@@ -49,7 +50,7 @@ def record_evidence(event: str, payload: dict = None):
 
 
 def _maybe_trim_jsonl():
-    """Keep file bounded — never delete SQLite."""
+    """Trim oldest lines only — never drops today's events. DB is source of truth."""
     try:
         if not os.path.exists(EVIDENCE_FILE):
             return
@@ -57,8 +58,13 @@ def _maybe_trim_jsonl():
             lines = f.readlines()
         if len(lines) <= MAX_JSONL_LINES:
             return
+        today = _today()
+        today_lines = [ln for ln in lines if f'"date": "{today}"' in ln or f'"date":"{today}"' in ln]
+        older = [ln for ln in lines if ln not in today_lines]
+        budget = max(MAX_JSONL_LINES - len(today_lines), 0)
+        kept = older[-budget:] + today_lines if budget else today_lines
         with open(EVIDENCE_FILE, 'w', encoding='utf-8') as f:
-            f.writelines(lines[-MAX_JSONL_LINES:])
+            f.writelines(kept)
     except Exception:
         pass
 
@@ -247,6 +253,13 @@ def format_evidence_report(date: str = None) -> str:
         f"*JSONL audit file:* `{EVIDENCE_FILE}`",
         f"  Events today: *{c['jsonl_lines_today']}* lines",
     ]
+
+    try:
+        from src.db_persistence import format_persistence_line
+        lines.append(f"\n💾 *Disk persistence:* {format_persistence_line()}")
+        lines.append("_Restart-safe — data in trader_brain.db + sim_evidence.jsonl_")
+    except Exception:
+        pass
 
     if audit['valid']:
         lines += ["", "✅ *Training day valid* — scanner recorded market evaluations."]

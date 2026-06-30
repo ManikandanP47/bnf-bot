@@ -479,6 +479,19 @@ def main():
                 init_sim_scan_table()
             except Exception:
                 pass
+            try:
+                from src.db_persistence import verify_persistence_on_startup
+                audit = verify_persistence_on_startup(msg)
+                if audit.get('ok') and not audit.get('first_run'):
+                    print(f"  ✅ Data persisted: shadow={audit['counts'].get('shadow_trades', 0)} "
+                          f"scans={audit['counts'].get('sim_scan_log', 0)} "
+                          f"patterns={audit['counts'].get('pattern_memory', 0)}")
+                elif audit.get('first_run'):
+                    print("  ✅ Persistence baseline saved (first run)")
+                else:
+                    print("  ⚠️ Persistence check: possible data loss — see Telegram")
+            except Exception as e:
+                print(f"  ⚠️ Persistence check skipped: {e}")
             tok = STATE.get('system.groww_token', '') or fetch_groww_token()
             if tok:
                 refresh_market_context(tok)

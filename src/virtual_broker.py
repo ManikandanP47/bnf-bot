@@ -22,7 +22,8 @@ _last_mid_snap: dict = {}  # shadow_id -> epoch
 
 
 def _conn():
-    return sqlite3.connect(DB_FILE)
+    from src.db_persistence import connect
+    return connect()
 
 
 def init_virtual_broker_tables():

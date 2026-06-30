@@ -20,7 +20,8 @@ SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '4'))
 
 
 def _conn():
-    return sqlite3.connect(DB_FILE)
+    from src.db_persistence import connect
+    return connect()
 
 
 def init_sim_scan_table():

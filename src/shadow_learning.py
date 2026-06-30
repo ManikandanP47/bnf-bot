@@ -57,7 +57,8 @@ def get_open_virtual_positions() -> list:
 
 
 def _conn():
-    return sqlite3.connect(DB_FILE)
+    from src.db_persistence import connect
+    return connect()
 
 
 def _migrate_shadow_columns(conn):
