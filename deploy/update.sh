@@ -44,6 +44,9 @@ if [[ -f .env ]]; then
   ensure_var STRUCTURED_LOG true
   ensure_var HEALTH_ENABLED true
   ensure_var HEALTH_PORT 8080
+  ensure_var SIM_MIN_SCORE 5
+  ensure_var SIM_SKIP_CHOP_SESSIONS true
+  ensure_var SIM_ALIGN_EXECUTE true
   if ! grep -q "^DASHBOARD_TOKEN=" .env 2>/dev/null; then
     DASH_TOK="$(openssl rand -hex 24)"
     echo "DASHBOARD_TOKEN=${DASH_TOK}" >> .env

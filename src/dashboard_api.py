@@ -150,8 +150,12 @@ def build_agents_payload() -> dict:
 def build_dashboard_payload() -> dict:
     from src.intelligence_brief import build_intelligence_brief
     from src.db_persistence import get_table_counts, format_persistence_line
+    from src.sim_execute_gap import build_execute_gap_payload
+    from src.trader_playbook import build_playbook_payload
+    from src.shadow_learning import learning_phase_info
 
     now = datetime.now(IST)
+    phase = learning_phase_info().get('phase', 'SIM')
     payload = {
         'ts': now.isoformat(),
         'ts_display': now.strftime('%d %b %Y %I:%M:%S %p IST'),
@@ -164,6 +168,8 @@ def build_dashboard_payload() -> dict:
         'persistence': get_table_counts(),
         'persistence_line': format_persistence_line(),
         'intelligence': build_intelligence_brief(),
+        'execute_gap': build_execute_gap_payload(),
+        'playbook': build_playbook_payload(phase),
         'evidence_tail': _recent_evidence(20),
     }
     try:

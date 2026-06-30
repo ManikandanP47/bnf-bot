@@ -203,6 +203,77 @@
     ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
   }
 
+  function renderExecuteGap(gap) {
+    if (!gap) return;
+    const v = document.getElementById('gap-verdict');
+    v.textContent = gap.verdict || '—';
+    v.className = 'gap-verdict' + (gap.misleading ? ' warn' : gap.sim_ok && gap.execute_ok ? ' ok' : '');
+
+    const simCls = gap.sim_ok ? 'status-pass' : 'status-fail';
+    const exCls = gap.execute_ok ? 'status-pass' : 'status-fail';
+    document.getElementById('gap-grid').innerHTML = `
+      <div class="gap-box">
+        <h4>Virtual sim (score ≥ ${gap.sim_min_score})</h4>
+        <p class="${simCls}">${gap.sim_ok ? 'PASS' : 'BLOCK'} — score ${gap.sim_score ?? 0}</p>
+        <p>${gap.sim_reason || (gap.sim_reasons || []).join(', ') || '—'}</p>
+      </div>
+      <div class="gap-box">
+        <h4>/execute + RiskAgent</h4>
+        <p class="${exCls}">${gap.execute_ok ? 'WOULD APPROVE' : 'WOULD BLOCK'}</p>
+        <p>${gap.execute_reason || '—'}</p>
+        <p style="color:var(--muted);margin-top:0.3rem">Signal score: ${gap.signal_score ?? '—'} · Bias: ${gap.bias || '—'}</p>
+      </div>`;
+  }
+
+  let playbookCache = null;
+  let activeTab = 'metrics';
+
+  function renderPlaybookTab(pb, tab) {
+    if (!pb) return '';
+    if (tab === 'metrics') {
+      return (pb.metrics || []).map((m) =>
+        `<div class="metric-card"><strong>${m.name}</strong>
+          <div class="math">${m.math}</div>
+          <div><b>Use:</b> ${m.use}</div>
+          <div><b>Trade:</b> ${m.trade}</div></div>`
+      ).join('');
+    }
+    if (tab === 'timing') {
+      return (pb.timing || []).map((t) =>
+        `<div class="timing-row"><span>${t.window}</span><span>${t.label}</span><span>${t.action}</span></div>`
+      ).join('');
+    }
+    if (tab === 'trust') {
+      return (pb.trust_guide || []).map((t) =>
+        `<div class="trust-row"><span class="trust-badge ${t.trust}">${t.trust}</span>
+          <div><b>${t.metric}</b> — ${t.why}</div></div>`
+      ).join('');
+    }
+    const entries = (pb.entry_stack || []).map((s) => `<li>${s}</li>`).join('');
+    const exits = (pb.exit_rules || []).map((s) => `<li>${s}</li>`).join('');
+    return `<h3 class="subhead">Entry stack</h3><ol class="stack-list">${entries}</ol>
+      <h3 class="subhead">Exit rules</h3><ol class="stack-list">${exits}</ol>`;
+  }
+
+  function renderPlaybook(pb) {
+    if (!pb) return;
+    playbookCache = pb;
+    document.getElementById('phase-tips').innerHTML = (pb.phase_tips || [])
+      .map((t) => `<span class="phase-tip">${t}</span>`).join('');
+    document.getElementById('playbook-content').innerHTML = renderPlaybookTab(pb, activeTab);
+  }
+
+  document.querySelectorAll('.playbook-tabs .tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.playbook-tabs .tab').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = btn.dataset.tab;
+      if (playbookCache) {
+        document.getElementById('playbook-content').innerHTML = renderPlaybookTab(playbookCache, activeTab);
+      }
+    });
+  });
+
   function setConn(ok) {
     const dot = document.getElementById('conn-dot');
     const label = document.getElementById('conn-label');
@@ -224,6 +295,8 @@
       renderEvidence(d.evidence_tail || [], (d.training || {}).counts);
       renderML(d.ml || {});
       renderIntelligence(d.intelligence || {});
+      renderExecuteGap(d.execute_gap);
+      renderPlaybook(d.playbook);
       renderAgents(d.agents || {});
       renderSystem(d.groww, d.persistence || {}, d.persistence_line);
     } catch (e) {

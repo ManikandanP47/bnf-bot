@@ -25,8 +25,15 @@ SIM_ENABLED = os.getenv('MARKET_SIM', 'true').lower() == 'true'
 SIM_MAX_PER_DAY = int(os.getenv('SIM_MAX_PER_DAY', '15'))
 SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
 SIM_SCAN_MINUTES = int(os.getenv('SIM_SCAN_MINUTES', '4'))
-SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '4'))
+SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '5'))
 SIM_MIN_GAP_MIN = int(os.getenv('SIM_MIN_GAP_MIN', '8'))
+SIM_SKIP_CHOP_SESSIONS = os.getenv('SIM_SKIP_CHOP_SESSIONS', 'true').lower() == 'true'
+SIM_ALIGN_EXECUTE = os.getenv('SIM_ALIGN_EXECUTE', 'true').lower() == 'true'
+
+_CHOP_SESSIONS = frozenset({
+    'LUNCH_CHOP', 'EOD_CHOP', 'OPEN_VOLATILE', 'OPENING_CHAOS',
+    'PRE_MARKET', 'CLOSED',
+})
 
 _last_scan_at = None
 _last_open_at = None
@@ -241,8 +248,17 @@ def evaluate_explore_setup() -> dict:
         })
 
     now = datetime.now(IST)
-    if not (dtime(9, 20) <= now.time() <= dtime(14, 45)):
+    end_t = dtime(14, 0) if SIM_ALIGN_EXECUTE else dtime(14, 45)
+    if not (dtime(9, 20) <= now.time() <= end_t):
         return _attach_snapshot({'ok': False, 'reason': 'outside sim window'})
+
+    if SIM_SKIP_CHOP_SESSIONS and session in _CHOP_SESSIONS:
+        return _attach_snapshot({
+            'ok': False,
+            'reason': f'chop session {session}',
+            'sim_score': 0,
+            'session': session,
+        })
 
     bias = _determine_bias(flow, c15m, zone)
     if bias not in ('BULLISH', 'BEARISH'):
