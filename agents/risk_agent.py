@@ -74,6 +74,17 @@ class RiskAgent(threading.Thread):
             return {'approved': False, 'reason': guard['reason']}
         warnings.extend(guard.get('warnings', []))
 
+        # ── IV rank gate (option buyers — cached NSE chain) ───────
+        try:
+            from src.greeks_gates import check_iv_rank_for_buyers
+            iv_gate = check_iv_rank_for_buyers(score)
+            if not iv_gate.get('ok', True):
+                return {'approved': False, 'reason': iv_gate['reason']}
+            if iv_gate.get('warning'):
+                warnings.append(iv_gate['warning'])
+        except Exception:
+            pass
+
         # ── Event calendar (RBI, Fed, monthly expiry) ─────────────
         from src.trade_filters import is_event_day
         event = is_event_day()

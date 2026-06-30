@@ -158,11 +158,15 @@ def _sim_realism_payload() -> dict:
 def _learning_feed_payload() -> dict:
     try:
         from src.sim_market_learn import get_today_learning_feed, learning_day_summary
-        return {
+        from core.shared_state import STATE
+        payload = {
             'summary': learning_day_summary(),
             'feed': get_today_learning_feed(20),
+            'live_insights': STATE.get('brain.live_insights') or {},
+            'market_observer': STATE.get('market.observer') or {},
             'note': 'Uses cached market data — no extra Groww API calls per scan',
         }
+        return payload
     except Exception as e:
         return {'error': str(e)[:80], 'feed': []}
 

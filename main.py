@@ -176,6 +176,7 @@ def scheduler(messenger: Messenger):
     last_uptime_day = -1
     last_groww_alert = -1
     last_evidence_alert = -1
+    last_observer       = -1
 
     while STATE.get('system.running'):
         try:
@@ -223,6 +224,18 @@ def scheduler(messenger: Messenger):
 
             # 9:25 AM — auto F&O flow (OI, VIX, EMA, chart lines)
             last_morning_flow = send_morning_flow_if_due(messenger, last_morning_flow)
+
+            # 9:16 AM — opening range + session context (yfinance, no Groww)
+            if hour == 9 and 16 <= minute <= 20 and last_observer != now.day:
+                last_observer = now.day
+                try:
+                    from src.live_learning import run_market_observer, format_observer_telegram
+                    from src.safety import check_trading_day
+                    if check_trading_day().get('trade'):
+                        run_market_observer()
+                        messenger.send(format_observer_telegram())
+                except Exception as e:
+                    STATE.add_error(f"Market observer: {str(e)[:40]}")
 
             # Wide window 9:00-9:14 AM -- handles restarts gracefully
             if hour == 9 and minute < 15 and last_premarket != now.day:

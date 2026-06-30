@@ -40,6 +40,11 @@ if [[ -f .env ]]; then
   ensure_var SIM_LEARNING_LOG true
   ensure_var GREEKS_ENABLED true
   ensure_var CHAIN_REFRESH_SEC 900
+  ensure_var LIVE_LEARNING true
+  ensure_var OBSERVER_INTERVAL_SEC 900
+  ensure_var IV_RANK_BLOCK 80
+  ensure_var IV_RANK_LOW 30
+  ensure_var IV_RANK_OVERRIDE_SCORE 9
   ensure_var SIM_EVIDENCE_JSONL true
   ensure_var SIM_EVIDENCE_FILE sim_evidence.jsonl
   ensure_var USE_VALID_TRAINING_DAYS true

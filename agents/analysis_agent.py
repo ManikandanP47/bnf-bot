@@ -337,6 +337,16 @@ class AnalysisAgent(threading.Thread):
         if know.get('patterns'):
             reasons.append(f"✅ 5M: {', '.join(know['patterns'])}")
 
+        try:
+            from src.greeks_gates import iv_rank_score_delta
+            iv_delta, iv_note = iv_rank_score_delta()
+            if iv_delta:
+                score += iv_delta
+            if iv_note:
+                reasons.append(iv_note)
+        except Exception:
+            pass
+
         rag_notes = [w for w in know.get('warnings', []) if '📚' in str(w)]
 
         # Publish signal

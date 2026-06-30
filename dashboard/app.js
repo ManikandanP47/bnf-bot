@@ -322,10 +322,14 @@
   function renderLearningFeed(lf) {
     if (!lf) return;
     const s = lf.summary || {};
+    const li = lf.live_insights || {};
     document.getElementById('learning-stats').innerHTML = [
-      stat('Observations', s.observations_today ?? 0),
-      stat('Virtual opens', s.virtual_opens ?? 0),
+      stat('Observations', s.observations_today ?? li.scans_today ?? 0),
+      stat('Virtual opens', s.virtual_opens ?? li.virtual_opens_today ?? 0),
       stat('Skips logged', s.skips_logged ?? 0),
+      stat('IV rank', li.iv_rank != null ? li.iv_rank : '—'),
+      stat('Regime', li.regime || '—'),
+      stat('OR signal', li.or_signal || '—'),
     ].join('');
     const feed = lf.feed || [];
     document.getElementById('learning-feed').innerHTML = feed.length

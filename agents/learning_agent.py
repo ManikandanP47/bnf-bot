@@ -388,14 +388,41 @@ class TraderBrain:
 
     def get_pattern_wr(self, key: str, min_samples: int = 5):
         """Win rate for a pattern (None if < min_samples)"""
+        stats = self.get_pattern_stats(key, min_samples)
+        return stats.get('wr') if stats else None
+
+    def get_pattern_stats(self, key: str, min_samples: int = 5):
+        """Pattern stats dict or None if below min_samples."""
         row = self.conn.execute(
-            "SELECT wins,losses,samples FROM pattern_memory WHERE pattern_key=?",
+            "SELECT wins,losses,samples,total_pnl FROM pattern_memory WHERE pattern_key=?",
             (key,)
         ).fetchone()
-        if row and row[2] >= min_samples:
-            total = row[0] + row[1]
-            return round(row[0] / total * 100, 1) if total > 0 else None
-        return None
+        if not row or row[2] < min_samples:
+            return None
+        total = row[0] + row[1]
+        wr = round(row[0] / total * 100, 1) if total > 0 else None
+        return {
+            'wins': row[0], 'losses': row[1], 'samples': row[2],
+            'total_pnl': row[3], 'wr': wr,
+        }
+
+    def _record_observe_key(self, key: str, good_avoid: int = 1, today: str = ''):
+        """Lightweight learning from scan observations (skip = good avoid in chop)."""
+        if not today:
+            today = datetime.now(IST).strftime('%Y-%m-%d')
+        is_win = 1 if good_avoid else 0
+        with self._lock:
+            self.conn.execute("""
+                INSERT INTO pattern_memory
+                (pattern_key,wins,losses,total_pnl,samples,last_seen)
+                VALUES (?,?,?,0,1,?)
+                ON CONFLICT(pattern_key) DO UPDATE SET
+                    wins      = wins + ?,
+                    losses    = losses + ?,
+                    samples   = samples + 1,
+                    last_seen = ?
+            """, (key, is_win, 1 - is_win, today,
+                  is_win, 1 - is_win, today))
 
     def get_pattern_winrate(self, key: str, min_samples: int = 5):
         """Alias used by RiskAgent."""
@@ -639,15 +666,23 @@ class LearningAgent(threading.Thread):
 
     def run(self):
         STATE.set_agent_status('learning', 'RUNNING')
-        print("🧠 Learning Agent started")
+        print("🧠 Learning Agent started (active + 5m sync)")
 
-        last_weekly = -1
+        last_push = 0.0
+        last_active = 0.0
 
         while STATE.get('system.running'):
+            now_t = time.time()
             try:
-                self._push_to_state()
+                if STATE.get('system.market_open') and now_t - last_active >= 60:
+                    from src.live_learning import run_active_learning_cycle
+                    run_active_learning_cycle(self.brain)
+                    last_active = now_t
+                if now_t - last_push >= 300:
+                    self._push_to_state()
+                    last_push = now_t
             except Exception as e:
                 STATE.add_error(f"Learning Agent: {str(e)[:60]}")
-            time.sleep(300)
+            time.sleep(15)
 
         STATE.set_agent_status('learning', 'STOPPED')
