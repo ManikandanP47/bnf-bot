@@ -49,14 +49,26 @@ def check_sim_entry_gates(premium: float = 0, sim_score: int = 0) -> dict:
     now = datetime.now(IST)
     min_score = int(os.getenv('SIM_MIN_SCORE', '5'))
 
-    if SIM_DAILY_LOSS_LIMIT_RS > 0:
+    try:
+        from src.sim_wallet import is_account_dead_today
+        dead = is_account_dead_today()
+        if dead['dead']:
+            return {
+                'ok': False,
+                'reason': (
+                    f'account dead today — loss ₹{dead["today_pnl"]:.0f} hit '
+                    f'{dead["pct_of_week_base"]}% cap (₹{dead["cap_rs"]:.0f})'
+                ),
+                'boosts': boosts,
+            }
+    except Exception:
         day_pnl = _today_shadow_pnl()
-        if day_pnl <= -SIM_DAILY_LOSS_LIMIT_RS:
+        if SIM_DAILY_LOSS_LIMIT_RS > 0 and day_pnl <= -SIM_DAILY_LOSS_LIMIT_RS:
             return {
                 'ok': False,
                 'reason': (
                     f'daily loss cap ₹{SIM_DAILY_LOSS_LIMIT_RS:.0f} hit '
-                    f'(today ₹{day_pnl:.0f}) — 2% capital rule'
+                    f'(today ₹{day_pnl:.0f})'
                 ),
                 'boosts': boosts,
             }
@@ -93,12 +105,20 @@ def realism_status() -> dict:
     """Dashboard snapshot of active realism rules."""
     from src.expiry_picker import banknifty_monthly_expiry, is_expiry_day, is_expiry_week
 
+    def _wallet_cap():
+        try:
+            from src.sim_wallet import effective_daily_loss_cap
+            return effective_daily_loss_cap()
+        except Exception:
+            return SIM_DAILY_LOSS_LIMIT_RS
+
     exp = banknifty_monthly_expiry()
     today = datetime.now(IST).date()
     return {
         'min_days_to_expiry': SIM_MIN_DAYS_TO_EXPIRY,
         'round_trip_cost_rs': SIM_ROUND_TRIP_COST_RS,
         'daily_loss_limit_rs': SIM_DAILY_LOSS_LIMIT_RS,
+        'daily_loss_cap_rs': _wallet_cap(),
         'block_expiry_day': SIM_BLOCK_EXPIRY_DAY,
         'require_sweet_premium': SIM_REQUIRE_SWEET_PREMIUM,
         'is_expiry_day': is_expiry_day(),

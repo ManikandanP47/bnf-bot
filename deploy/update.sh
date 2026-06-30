@@ -50,11 +50,15 @@ if [[ -f .env ]]; then
   ensure_var RECOVERY_MAX_LOSS_RS 450
   ensure_var RECOVERY_MAX_PER_WEEK 1
   ensure_var RECOVERY_SL_PCT 0.22
-  ensure_var SIM_WALLET_START_RS 5000
-  ensure_var SIM_WALLET_TARGET_RS 10000
-  ensure_var SIM_WALLET_SCALE_RS 15000
-  ensure_var SIM_WALLET_MAX_RS 20000
+  ensure_var SIM_WALLET_WEEK1_RS 10000
+  ensure_var SIM_WALLET_WEEK2_RS 12500
+  ensure_var SIM_WALLET_WEEK3_RS 15000
+  ensure_var SIM_WALLET_WEEK4_RS 20000
   ensure_var SIM_WALLET_MAX_LOTS 2
+  ensure_var SIM_WALLET_MAX_OPEN 2
+  ensure_var SIM_MULTI_FROM_WEEK1 true
+  ensure_var SIM_WALLET_DAILY_LOSS_PCT 0.02
+  ensure_var RECOVERY_MAX_PER_WEEK 2
   ensure_var SIM_EVIDENCE_JSONL true
   ensure_var SIM_EVIDENCE_FILE sim_evidence.jsonl
   ensure_var USE_VALID_TRAINING_DAYS true

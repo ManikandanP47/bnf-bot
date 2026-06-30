@@ -23,7 +23,7 @@ LOT_SIZE = 15
 
 SIM_ENABLED = os.getenv('MARKET_SIM', 'true').lower() == 'true'
 SIM_MAX_PER_DAY = int(os.getenv('SIM_MAX_PER_DAY', '15'))
-SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', '2'))
+SIM_MAX_OPEN = int(os.getenv('SIM_MAX_OPEN', os.getenv('SIM_WALLET_MAX_OPEN', '2')))
 SIM_SCAN_MINUTES = int(os.getenv('SIM_SCAN_MINUTES', '4'))
 SIM_MIN_SCORE = int(os.getenv('SIM_MIN_SCORE', '5'))
 SIM_MIN_GAP_MIN = int(os.getenv('SIM_MIN_GAP_MIN', '8'))
@@ -347,7 +347,11 @@ def open_explore_sim(setup: dict) -> dict:
         and setup.get('session') in ('AFTERNOON_MOVE',)
         and int(setup.get('sim_score', 0) or 0) >= int(os.getenv('RECOVERY_MIN_SCORE', '9'))
     )
-    plan = plan_sim_order(params.get('premium', 0), is_recovery=is_rec)
+    plan = plan_sim_order(
+        params.get('premium', 0),
+        sl_prem=params.get('sl_prem', 0),
+        is_recovery=is_rec,
+    )
     if not plan.get('ok'):
         return {'opened': False, 'reason': plan.get('reason', 'wallet')}
 

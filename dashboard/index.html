@@ -80,7 +80,8 @@
   <main class="grid tab-panel" id="panel-sim" data-panel="sim">
     <section class="card span-2" id="wallet-card">
       <h2>Virtual Wallet Training</h2>
-      <p class="playbook-intro">Sim runs on virtual ₹5k → ₹10k → ₹15–20k. Teaches capital protection, loss reduction, and recovery.</p>
+      <p class="playbook-intro">Week 1 starts ₹10k — capital rises each week. Multi-order + recovery ON from day 1.</p>
+      <div id="wallet-dead-banner" class="wallet-dead-banner hidden" role="alert"></div>
       <div class="wallet-hero">
         <div class="wallet-balance">
           <span class="label">Balance</span>
@@ -91,11 +92,15 @@
       </div>
       <div class="progress-wrap">
         <div class="progress-label">
-          <span id="wallet-goal-label">Progress to ₹10k</span>
+          <span id="wallet-goal-label">Week progress</span>
           <span id="wallet-progress-text">0%</span>
         </div>
         <div class="progress-bar"><div id="wallet-progress" class="progress-fill wallet"></div></div>
       </div>
+      <section class="compare-box" id="live-compare-box">
+        <h3 class="subhead">Sim wallet vs live ₹5k</h3>
+        <div class="gap-grid" id="live-compare-grid"></div>
+      </section>
       <div class="two-col wallet-cols">
         <ul class="kv-list" id="wallet-kv"></ul>
         <ul class="kv-list" id="recovery-pnl-kv"></ul>
@@ -104,13 +109,13 @@
 
     <section class="card span-2" id="sim-orders-card">
       <h2>Sim Orders</h2>
-      <p class="playbook-intro">Virtual CE/PE trades — open and closed. Recovery trades marked 🔄.</p>
+      <p class="playbook-intro">Virtual CE/PE — max risk at SL shown. Recovery trades marked 🔄.</p>
       <div class="scroll-list sim-orders-table-wrap">
         <table class="orders-table" id="sim-orders-table">
           <thead>
             <tr>
               <th>#</th><th>Time</th><th>Option</th><th>Lots</th><th>Entry</th>
-              <th>Exit</th><th>P&amp;L</th><th>Status</th>
+              <th>Max risk</th><th>Exit</th><th>P&amp;L</th><th>Status</th>
             </tr>
           </thead>
           <tbody id="sim-orders-body"></tbody>

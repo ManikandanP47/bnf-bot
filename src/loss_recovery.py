@@ -24,7 +24,7 @@ IST = pytz.timezone('Asia/Kolkata')
 RECOVERY_ENABLED = os.getenv('RECOVERY_ENABLED', 'true').lower() == 'true'
 RECOVERY_MIN_SCORE = int(os.getenv('RECOVERY_MIN_SCORE', '9'))
 RECOVERY_MAX_LOSS_RS = float(os.getenv('RECOVERY_MAX_LOSS_RS', '450'))
-RECOVERY_MAX_PER_WEEK = int(os.getenv('RECOVERY_MAX_PER_WEEK', '1'))
+RECOVERY_MAX_PER_WEEK = int(os.getenv('RECOVERY_MAX_PER_WEEK', '2'))
 RECOVERY_SL_PCT = float(os.getenv('RECOVERY_SL_PCT', '0.22'))
 RECOVERY_DRILL_MIN_WR = float(os.getenv('RECOVERY_DRILL_MIN_WR', '45'))
 RECOVERY_DRILL_MIN_SAMPLES = int(os.getenv('RECOVERY_DRILL_MIN_SAMPLES', '8'))

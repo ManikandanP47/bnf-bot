@@ -359,6 +359,24 @@ footer code {
 .wallet-balance .label { font-size: 0.75rem; color: var(--muted); display: block; }
 .wallet-cols { margin-top: 0.5rem; }
 
+.wallet-dead-banner {
+  background: rgba(248, 81, 73, 0.15);
+  border: 1px solid var(--red);
+  color: #ffb4af;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+.wallet-dead-banner.hidden { display: none; }
+
+.compare-box {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
 .orders-table {
   width: 100%;
   border-collapse: collapse;

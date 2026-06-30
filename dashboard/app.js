@@ -323,43 +323,85 @@
     if (!sw || sw.error) return;
     const w = sw.wallet || {};
     const t = sw.today || {};
+    const wk = sw.week || {};
     const rec = sw.recovery || {};
     const at = sw.all_time || {};
+    const dead = sw.account_status || {};
+    const cmp = sw.live_compare || {};
+    const tw = sw.training_week || {};
+
+    const banner = document.getElementById('wallet-dead-banner');
+    if (banner) {
+      if (dead.dead || w.account_dead_today) {
+        banner.classList.remove('hidden');
+        banner.textContent =
+          `🛑 Sim account dead for today — loss ₹${fmt(Math.abs(dead.today_pnl || t.pnl), 0)} ` +
+          `hit ${dead.pct_of_week_base || 2}% cap (₹${fmt(dead.cap_rs || w.daily_loss_cap_rs, 0)}). No new sim orders.`;
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
 
     const balEl = document.getElementById('wallet-balance');
     if (balEl) balEl.textContent = '₹' + fmt(w.balance, 0);
     const phaseEl = document.getElementById('wallet-phase');
-    if (phaseEl) phaseEl.textContent = w.phase_label || w.phase || '—';
+    if (phaseEl) {
+      phaseEl.textContent = (w.phase_label || '') +
+        (tw.week ? ` · Week ${tw.week} base ₹${fmt(w.week_base_rs, 0)}` : '');
+    }
 
     const statsEl = document.getElementById('wallet-stats');
     if (statsEl) {
       statsEl.innerHTML = [
         stat('Available', '₹' + fmt(w.available, 0)),
-        stat('Reserved', '₹' + fmt(w.reserved, 0)),
-        stat('Lots allowed', w.lots_allowed ?? 1),
+        stat('Week P&L', '₹' + fmt(w.week_pnl ?? wk.pnl, 0)),
+        stat('Lots / open', (w.lots_allowed ?? 1) + ' / ' + (w.max_open ?? 2)),
         stat('Today P&L', '₹' + fmt(t.pnl, 0)),
-        stat('W/L today', (t.wins ?? 0) + '/' + (t.losses ?? 0)),
-        stat('All-time WR', at.win_rate != null ? at.win_rate + '%' : '—'),
+        stat('Daily cap left', '₹' + fmt(w.daily_remaining_rs ?? dead.remaining_rs, 0)),
+        stat('Recovery P&L', '₹' + fmt(t.recovery_pnl, 0)),
       ].join('');
     }
 
     const pct = w.progress_pct ?? 0;
     const goalLbl = document.getElementById('wallet-goal-label');
-    if (goalLbl) goalLbl.textContent = 'Progress to ₹' + fmt(w.next_goal_rs || w.target_rs, 0);
+    if (goalLbl) goalLbl.textContent = `Week ${tw.week || w.week || 1} target ₹${fmt(w.next_goal_rs, 0)}`;
     const prog = document.getElementById('wallet-progress');
     if (prog) prog.style.width = Math.min(100, pct) + '%';
     const progTxt = document.getElementById('wallet-progress-text');
     if (progTxt) progTxt.textContent = pct + '%';
 
+    const cg = document.getElementById('live-compare-grid');
+    if (cg && cmp.sim && cmp.live) {
+      const s = cmp.sim;
+      const l = cmp.live;
+      cg.innerHTML = `
+        <div class="gap-box">
+          <h4>${s.label}</h4>
+          <div>Base ₹${fmt(s.capital_base, 0)} → Balance ₹${fmt(s.balance, 0)}</div>
+          <div>Today <strong>₹${fmt(s.today_pnl, 0)}</strong> · Week ₹${fmt(s.week_pnl, 0)}</div>
+          <div>Open ${s.open_positions}/${s.max_open} · ${s.lots_allowed} lot(s) max</div>
+        </div>
+        <div class="gap-box">
+          <h4>${l.label}</h4>
+          <div>Capital ₹${fmt(l.capital, 0)}</div>
+          <div>Today <strong>₹${fmt(l.today_pnl, 0)}</strong> · Week ₹${fmt(l.week_pnl, 0)}</div>
+          <div style="color:var(--muted);font-size:0.78rem">${l.note || ''}</div>
+        </div>`;
+    }
+
     const kv = document.getElementById('wallet-kv');
     if (kv) {
+      const ladder = (w.weekly_capital_ladder || [10000, 12500, 15000, 20000])
+        .map((v, i) => `W${i + 1} ₹${fmt(v, 0)}`).join(' → ');
       kv.innerHTML = [
-        ['Start capital', '₹' + fmt(w.start_rs, 0)],
-        ['Cumulative P&L', '₹' + fmt(w.cumulative_pnl, 0)],
-        ['Target', '₹' + fmt(w.target_rs, 0) + ' → ₹' + fmt(w.max_rs, 0)],
-        ['Scale at', '₹' + fmt(w.scale_rs, 0) + ' (2 lots)'],
+        ['Training week', `Week ${tw.week || 1} (day ${tw.days_in_week || '—'})`],
+        ['Week base', '₹' + fmt(w.week_base_rs, 0)],
+        ['Next week base', '₹' + fmt(w.next_week_base_rs, 0)],
+        ['Capital ladder', ladder],
+        ['Multi-order', w.multi_order ? 'ON (week 1+)' : 'off'],
+        ['Daily loss cap', '₹' + fmt(w.daily_loss_cap_rs, 0) + ' (2%)'],
         ['Open sims', t.open ?? 0],
-        ['Closed trades', at.trades ?? 0],
+        ['All-time WR', at.win_rate != null ? at.win_rate + '%' : '—'],
       ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
     }
 
@@ -367,12 +409,12 @@
     if (rkv) {
       const ds = rec.drill_stats || {};
       rkv.innerHTML = [
+        ['Recovery', rec.enabled_from_week1 !== false ? 'ON from week 1' : '—'],
         ['Recovery window', rec.active ? '🔄 OPEN' : 'closed'],
         ['Recovery P&L today', '₹' + fmt(t.recovery_pnl, 0)],
-        ['Recovery sims today', t.recovery_trades ?? 0],
-        ['Drill win rate', ds.wr != null ? ds.wr + '%' : '—'],
-        ['Drill samples', ds.samples ?? 0],
-        ['Weekly recovery', (rec.weekly_used ?? 0) + '/' + (rec.weekly_cap ?? 1)],
+        ['Recovery trades', t.recovery_trades ?? 0],
+        ['Drill WR', ds.wr != null ? ds.wr + '%' : '—'],
+        ['Weekly recovery', (rec.weekly_used ?? 0) + '/' + (rec.weekly_cap ?? 2)],
       ].map(([k, v]) => `<li><span class="k">${k}</span><span>${v}</span></li>`).join('');
     }
 
@@ -380,7 +422,7 @@
     if (!tbody) return;
     const orders = sw.orders && sw.orders.length ? sw.orders : (sw.orders_recent || []);
     if (!orders.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted)">No sim orders yet — scans run when market opens.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">No sim orders yet — scans run when market opens.</td></tr>';
       return;
     }
     tbody.innerHTML = orders.slice().reverse().map((o) => {
@@ -388,12 +430,14 @@
       const cls = o.outcome === 'WIN' ? 'win' : o.outcome === 'LOSS' ? 'loss' : (st === 'OPEN' ? 'open' : '');
       const pnl = st === 'CLOSED' ? '₹' + fmt(o.pnl_rs, 0) : '—';
       const recTag = o.is_recovery ? '<span class="tag-recovery">🔄</span>' : '';
+      const risk = o.max_loss_rs != null ? '₹' + fmt(o.max_loss_rs, 0) : '—';
       return `<tr class="${cls}">
         <td>${o.id}${recTag}</td>
         <td>${o.entry_time || ''}${o.exit_time ? '→' + o.exit_time : ''}</td>
         <td>${o.option_name || '—'}<br><span style="color:var(--muted)">${o.session || ''}</span></td>
         <td>${o.lots ?? 1}</td>
         <td>₹${fmt(o.entry_prem, 0)}</td>
+        <td>${risk}</td>
         <td>${o.exit_prem ? '₹' + fmt(o.exit_prem, 0) : '—'}</td>
         <td>${pnl}</td>
         <td>${st}${o.outcome ? ' ' + o.outcome : ''}</td>
