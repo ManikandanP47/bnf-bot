@@ -65,7 +65,7 @@ def format_groww_health() -> str:
 
     lines += [
         '',
-        '_Tip: never run Groww tests on Mac while server bot is live._',
+        '*Tip:* never run Groww tests on Mac while server bot is live.',
     ]
     return '\n'.join(lines)
 
